@@ -1,0 +1,30 @@
+{
+  "name": "codex-telegram",
+  "version": "0.1.0",
+  "description": "Privacy-first local Telegram user-account access through TDLib and MCP.",
+  "author": {
+    "name": "codex-telegram contributors"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Telegram",
+    "shortDescription": "Use your personal Telegram account privately from Codex.",
+    "longDescription": "A local TDLib-based MCP server for reading Telegram, sending explicitly approved messages, downloading files, and using safe bot callback buttons. Credentials and sessions remain on the user's device.",
+    "developerName": "codex-telegram contributors",
+    "category": "Productivity",
+    "capabilities": [
+      "Read Telegram",
+      "Send messages",
+      "Download files",
+      "Use bot inline buttons",
+      "React to messages"
+    ],
+    "defaultPrompt": [
+      "Show my latest Telegram messages.",
+      "Find messages about the website deadline.",
+      "Open a bot menu and list its safe callback buttons."
+    ],
+    "brandColor": "#229ED9"
+  },
+  "mcpServers": "./.mcp.json"
+}
