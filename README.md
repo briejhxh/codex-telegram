@@ -97,7 +97,9 @@ TG_ALLOWED_TOOLS=telegram_reply_message
 ```
 
 File sending additionally requires `TG_FILE_ROOTS`; destructive operations need
-a private `TG_DESTRUCTIVE_APPROVAL` code. Read the full [permissions guide](docs/PERMISSIONS.md) before enabling writes.
+a private `TG_DESTRUCTIVE_APPROVAL_SECRET` and an expiring, one-time token bound
+to the exact action (`pnpm run approve telegram_delete_own_message <chat_id> <message_id>`).
+Read the full [permissions guide](docs/PERMISSIONS.md) before enabling writes.
 
 For multiple accounts, register separate MCP servers with different
 `TG_ACCOUNT` values such as `personal`, `work`, and `test`. Each gets isolated

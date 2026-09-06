@@ -53,6 +53,9 @@ export async function executeWithRetry<T>(work: () => Promise<T>, options: Retry
       if (policy.kind === "write" && error.code === "TIMEOUT") throw new TelegramError("WRITE_OUTCOME_UNKNOWN", "The write request timed out; do not retry automatically because Telegram may already have accepted it.");
       if (!error.retryable || attempt >= policy.retries) throw error;
       const floodMs = error.retryAfterSeconds ? error.retryAfterSeconds * 1_000 : 0;
+      // Retrying before Telegram's requested FloodWait ends merely burns another
+      // request. Report a bounded-but-long wait to the caller instead.
+      if (floodMs > policy.maxDelayMs) throw error;
       const exponential = Math.min(policy.maxDelayMs, 250 * 2 ** attempt);
       const delay = Math.min(policy.maxDelayMs, Math.max(floodMs, exponential) + Math.floor(random() * 100));
       if (delay <= 0) throw error;

@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { WriteRateLimiter } from "./rateLimit.js";
+import { ApprovalError, consumeApproval } from "./approval.js";
 
 export type ToolRisk = "read" | "low-risk-write" | "write" | "destructive";
 export type PolicyProfile = "read-only" | "inbox" | "messaging" | "files" | "community-manager" | "admin" | "full-access";
@@ -53,11 +54,11 @@ export class Policy {
       file_roots_configured: this.fileRoots.length,
       max_send_file_bytes: Number.isSafeInteger(this.maxFileBytes) && this.maxFileBytes > 0 ? this.maxFileBytes : undefined,
       max_writes_per_minute: Number.isSafeInteger(this.maxWritesPerMinute) && this.maxWritesPerMinute > 0 ? this.maxWritesPerMinute : undefined,
-      destructive_approval_configured: Boolean(process.env.TG_DESTRUCTIVE_APPROVAL?.trim()),
+      destructive_approval_configured: Boolean(process.env.TG_DESTRUCTIVE_APPROVAL_SECRET?.trim()),
     };
   }
 
-  authorize(tool: string, risk: ToolRisk, options: { chatId?: number; approvalCode?: string } = {}) {
+  authorize(tool: string, risk: ToolRisk, options: { chatId?: number; approvalCode?: string; material?: Record<string, string | number | boolean> } = {}) {
     if (this.deniedTools.has(tool)) throw new PolicyError("TOOL_DENIED", `${tool} is denied by the local Telegram policy.`);
     if (this.allowedTools.size > 0 && !this.allowedTools.has(tool)) throw new PolicyError("TOOL_NOT_ALLOWED", `${tool} is not in TG_ALLOWED_TOOLS.`);
     if (!profileRisks[this.profile].includes(risk)) throw new PolicyError("WRITE_DISABLED", `${tool} requires ${risk} access; the active profile is ${this.profile}.`);
@@ -66,8 +67,8 @@ export class Policy {
       if (risk !== "read" && this.allowedChatIds.size > 0 && !this.allowedChatIds.has(options.chatId)) throw new PolicyError("PEER_NOT_ALLOWED", `Chat ${options.chatId} is not in TG_ALLOWED_CHAT_IDS.`);
     }
     if (risk === "destructive") {
-      const expected = process.env.TG_DESTRUCTIVE_APPROVAL?.trim();
-      if (!expected || options.approvalCode !== expected) throw new PolicyError("APPROVAL_REQUIRED", "This destructive action requires the locally configured TG_DESTRUCTIVE_APPROVAL code.");
+      try { consumeApproval(process.env.TG_DESTRUCTIVE_APPROVAL_SECRET?.trim(), { tool, account: process.env.TG_ACCOUNT ?? "default", chatId: options.chatId, material: options.material }, options.approvalCode); }
+      catch (error) { if (error instanceof ApprovalError) throw new PolicyError(error.code, error.message); throw error; }
     }
     if (risk !== "read") {
       if (!Number.isSafeInteger(this.maxWritesPerMinute) || this.maxWritesPerMinute <= 0) throw new PolicyError("INVALID_POLICY", "TG_MAX_WRITES_PER_MINUTE must be a positive integer.");

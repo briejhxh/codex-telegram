@@ -38,10 +38,10 @@ test("does not replay writes after a transient failure", async () => {
   assert.equal(calls, 1);
 });
 
-test("uses a bounded FloodWait delay for retryable reads", async () => {
+test("does not retry a FloodWait beyond the configured retry ceiling", async () => {
   const delays: number[] = [];
   await assert.rejects(() => executeWithRetry(async () => { throw new Error("FLOOD_WAIT_12"); }, { policy: { ...operationPolicies.metadata, retries: 1, maxDelayMs: 1_000 }, random: () => 0, sleep: async (delay) => { delays.push(delay); } }), (error: unknown) => error instanceof TelegramError && error.code === "TELEGRAM_FLOOD_WAIT");
-  assert.deepEqual(delays, [1_000]);
+  assert.deepEqual(delays, []);
 });
 
 test("returns cancellation without retrying", async () => {

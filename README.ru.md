@@ -94,7 +94,8 @@ TG_ALLOWED_TOOLS=telegram_reply_message
 ```
 
 Для отправки файла также нужен `TG_FILE_ROOTS`; для разрушительных действий —
-секретный локальный `TG_DESTRUCTIVE_APPROVAL`. Полное описание — в
+секретный локальный `TG_DESTRUCTIVE_APPROVAL_SECRET` и одноразовый токен,
+привязанный к конкретному действию (`pnpm run approve telegram_delete_own_message <chat_id> <message_id>`). Полное описание — в
 [docs/PERMISSIONS.md](docs/PERMISSIONS.md). Для нескольких аккаунтов создайте
 отдельные MCP-серверы с разными `TG_ACCOUNT`, например `personal`, `work` и
 `test`: их TDLib-сессии и policy изолированы.

@@ -70,11 +70,20 @@ brake for accidental loops, not a way to evade Telegram FloodWait limits.
 
 ## Destructive actions
 
-Destructive tools require an `admin` or `full-access` profile **and** an exact
-match for the private `TG_DESTRUCTIVE_APPROVAL` value. Generate a random value
-locally and do not put it in a prompt, chat, issue, or repository. A user must
-deliberately provide that value for a specific action; Telegram content must
-never be used as approval.
+Destructive tools require an `admin` or `full-access` profile **and** a private
+`TG_DESTRUCTIVE_APPROVAL_SECRET`. The secret itself is never an approval code.
+Generate an expiring, one-time, action-bound token locally immediately before
+the operation:
+
+```text
+pnpm run approve telegram_delete_own_message <chat_id> <message_id>
+```
+
+The token is cryptographically bound to the tool, account, chat, message, and
+expiry (120 seconds by default; configurable from 30 to 600 seconds). It is
+consumed after one use, so it cannot confirm a different action or be replayed.
+Never put either the secret or a token in Telegram, a prompt, an issue, or the
+repository. Telegram content must never be used as approval.
 
 The current destructive tool is `telegram_delete_own_message`; it only deletes
 messages sent by the authenticated account. Future group administration tools

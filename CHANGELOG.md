@@ -14,7 +14,10 @@ All notable changes are documented here.
 ## Unreleased
 
 - Added server-side permission profiles, custom tool/peer allow and deny lists,
-  outbound file roots, file-size limits, and destructive approval codes.
+  outbound file roots, file-size limits, and destructive approvals.
+- Destructive approval is now an expiring one-time token cryptographically
+  bound to the exact account, chat, message, and tool; static reusable codes
+  are no longer accepted.
 - Defaulted the public server to read-only instead of relying on a client skill
   to prevent writes.
 - Marked Telegram output as untrusted, normalized control/invisible characters,

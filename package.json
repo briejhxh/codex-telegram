@@ -14,11 +14,12 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node --import tsx --test tests/helpers.test.ts tests/policy.test.ts tests/retry.test.ts tests/fakeService.test.ts",
+    "test": "node --import tsx --test tests/helpers.test.ts tests/policy.test.ts tests/approval.test.ts tests/retry.test.ts tests/fakeService.test.ts",
     "plugin:validate": "node scripts/validate-plugin.mjs",
     "check": "pnpm run typecheck && pnpm run test && pnpm run build && pnpm run plugin:validate",
     "setup": "tsx src/setup.ts",
-    "migrate-legacy-config": "tsx src/migrateLegacyConfig.ts"
+    "migrate-legacy-config": "tsx src/migrateLegacyConfig.ts",
+    "approve": "tsx src/approve.ts"
   },
   "engines": { "node": ">=20" },
   "dependencies": {
