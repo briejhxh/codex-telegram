@@ -29,7 +29,10 @@ const server = new McpServer({ name: "codex-telegram", version: "0.2.0" });
 const rawRegisterTool = server.registerTool.bind(server);
 // One centralized MCP boundary: every tool accepts an optional account and runs
 // under an AsyncLocalStorage account scope. Existing single-account calls work.
-(server as unknown as { registerTool: (...args: any[]) => unknown }).registerTool = (name: string, definition: any, handler: any) => (rawRegisterTool as any)(name, { ...definition, inputSchema: { ...definition.inputSchema, account: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,31}$/i).optional().describe("Telegram account profile; required when multiple accounts are configured.") } }, (args: { account?: string }) => router.run(args.account, () => handler(args)));
+const genericOutputSchema = z.object({}).passthrough();
+const paginatedOutputSchema = z.object({ items: z.array(z.object({}).passthrough()), has_more: z.boolean(), next_cursor: z.string().optional(), truncated: z.boolean() });
+const paginatedTools = new Set(["telegram_list_chats", "telegram_get_messages", "telegram_search_messages", "telegram_search_media"]);
+(server as unknown as { registerTool: (...args: any[]) => unknown }).registerTool = (name: string, definition: any, handler: any) => (rawRegisterTool as any)(name, { ...definition, outputSchema: definition.outputSchema ?? (paginatedTools.has(name) ? paginatedOutputSchema : genericOutputSchema), inputSchema: { ...definition.inputSchema, account: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,31}$/i).optional().describe("Telegram account profile; required when multiple accounts are configured.") } }, (args: { account?: string }) => router.run(args.account, () => handler(args)));
 const context = { accounts, telegram: router.telegram, policy: router.policy };
 
 registerGetMe(server, context);
