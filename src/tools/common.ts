@@ -2,13 +2,19 @@ import { publicError } from "../security/errors.js";
 import type { AccountManager } from "../accounts/manager.js";
 import type { TelegramService } from "../telegram/service.js";
 import type { Policy } from "../security/policy.js";
-import { budgetResponse } from "./responseBudget.js";
+import { budgetResponse, maxResponseBytes } from "./responseBudget.js";
 
 export type ToolResult = { content: Array<{ type: "text"; text: string; annotations?: { audience?: ("user" | "assistant")[] } }>; structuredContent?: Record<string, unknown>; isError?: boolean };
 
 export function json(data: unknown): ToolResult {
-  const bounded = budgetResponse(data);
-  const text = JSON.stringify(bounded, null, 2);
+  let bounded = budgetResponse(data);
+  let text = JSON.stringify(bounded, null, 2);
+  // Successful MCP results carry both forms. Re-budget the single logical value
+  // until their combined serialized payload remains within the configured cap.
+  if (bounded && typeof bounded === "object" && !Array.isArray(bounded) && Buffer.byteLength(text, "utf8") + Buffer.byteLength(JSON.stringify(bounded), "utf8") > maxResponseBytes()) {
+    bounded = budgetResponse(data, Math.floor(maxResponseBytes() / 4));
+    text = JSON.stringify(bounded, null, 2);
+  }
   // The exact same bounded value is used for both representations. The response
   // budget is deliberately applied before either representation is produced.
   return bounded && typeof bounded === "object" && !Array.isArray(bounded)
