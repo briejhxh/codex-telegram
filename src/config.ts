@@ -1,11 +1,12 @@
 import os from "node:os";
 import path from "node:path";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-function defaultStateRoot(): string {
+export function defaultStateRoot(): string {
   if (process.platform === "win32") return path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"), "codex-telegram");
   return path.join(process.env.XDG_STATE_HOME ?? path.join(os.homedir(), ".local", "state"), "codex-telegram");
 }
@@ -28,6 +29,29 @@ dotenv.config({ path: configFile });
 if (process.env.TG_USE_DOTENV === "1") dotenv.config({ path: path.join(projectRoot, ".env") });
 
 export const downloadsDirectory = path.resolve(process.env.TG_DOWNLOADS_DIR ?? path.join(configDirectory, "downloads"));
+
+export type AccountSettings = { account: string; configDirectory: string; configFile: string; downloadsDirectory: string; databaseDirectory: string; filesDirectory: string; environment: Record<string, string | undefined> };
+
+export function configuredAccountNames(): string[] {
+  const configured = (process.env.TG_ACCOUNTS ?? "").split(",").map((name) => name.trim()).filter(Boolean).map(accountName);
+  return [...new Set([activeAccount, ...configured])];
+}
+
+export function accountSettings(account: string): AccountSettings {
+  const name = accountName(account);
+  const directory = name === activeAccount ? configDirectory : path.join(defaultStateRoot(), "profiles", name);
+  const file = name === activeAccount ? configFile : path.join(directory, "config.env");
+  const environment: Record<string, string | undefined> = name === activeAccount ? { ...process.env } : (() => {
+    try { return dotenv.parse(fs.readFileSync(file)); } catch { return {}; }
+  })();
+  return {
+    account: name, configDirectory: directory, configFile: file,
+    downloadsDirectory: path.resolve(environment.TG_DOWNLOADS_DIR ?? path.join(directory, "downloads")),
+    databaseDirectory: path.resolve(environment.TG_DATABASE_DIR ?? path.join(directory, "tdlib", "database")),
+    filesDirectory: path.resolve(environment.TG_FILES_DIR ?? path.join(directory, "tdlib", "files")),
+    environment,
+  };
+}
 
 function tdlibDirectories() {
   return {
@@ -66,13 +90,19 @@ function required(name: string): string {
   return value;
 }
 
-export function loadConfig() {
-  const apiId = Number(required("TG_API_ID"));
+export function loadConfig(settings = accountSettings(activeAccount)) {
+  const requiredFrom = (name: string) => {
+    const value = settings.environment[name]?.trim();
+    if (!value) throw new Error(`${name} is missing for Telegram account '${settings.account}'. Run \`pnpm run setup\` in a terminal; never pass it through MCP.`);
+    return value;
+  };
+  const apiId = Number(requiredFrom("TG_API_ID"));
   if (!Number.isSafeInteger(apiId) || apiId <= 0) throw new Error("TG_API_ID must be a positive integer.");
   return {
     apiId,
-    apiHash: required("TG_API_HASH"),
-    ...tdlibDirectories(),
+    apiHash: requiredFrom("TG_API_HASH"),
+    databaseDirectory: settings.databaseDirectory,
+    filesDirectory: settings.filesDirectory,
   };
 }
 

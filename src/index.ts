@@ -1,7 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { TelegramClient } from "./telegram/client.js";
-import { Policy } from "./security/policy.js";
+import { AccountManager } from "./accounts/manager.js";
 import { log } from "./utils/logger.js";
 import { registerDownloadFile } from "./tools/downloadFile.js";
 import { registerGetChat } from "./tools/getChat.js";
@@ -22,8 +21,8 @@ import { registerSendFile } from "./tools/sendFile.js";
 import { registerSendMessage } from "./tools/sendMessage.js";
 import { registerManageMessage } from "./tools/manageMessage.js";
 
-const telegram = new TelegramClient();
-const policy = new Policy();
+const accounts = new AccountManager();
+const { service: { telegram, policy } } = accounts.get();
 const server = new McpServer({ name: "codex-telegram", version: "0.2.0" });
 const context = { telegram, policy };
 
@@ -49,7 +48,7 @@ registerDownloadFile(server, context);
 
 async function shutdown(signal: string) {
   log.info("MCP server stopping", { signal });
-  await telegram.close();
+  await accounts.close();
   process.exit(0);
 }
 process.once("SIGINT", () => void shutdown("SIGINT"));

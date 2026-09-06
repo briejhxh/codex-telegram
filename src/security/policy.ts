@@ -16,17 +16,17 @@ const profileRisks: Record<PolicyProfile, readonly ToolRisk[]> = {
   "full-access": ["read", "low-risk-write", "write", "destructive"],
 };
 
-function csv(name: string): string[] {
-  return (process.env[name] ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+function csv(name: string, environment: Record<string, string | undefined>): string[] {
+  return (environment[name] ?? "").split(",").map((item) => item.trim()).filter(Boolean);
 }
 
-function roots(): string[] {
-  const value = process.env.TG_FILE_ROOTS ?? "";
+function roots(environment: Record<string, string | undefined>): string[] {
+  const value = environment.TG_FILE_ROOTS ?? "";
   return value.split(path.delimiter).map((item) => item.trim()).filter(Boolean).map((item) => path.resolve(item));
 }
 
-function profile(): PolicyProfile {
-  const value = process.env.TG_POLICY_PROFILE ?? "read-only";
+function profile(environment: Record<string, string | undefined>): PolicyProfile {
+  const value = environment.TG_POLICY_PROFILE ?? "read-only";
   if (value in profileRisks) return value as PolicyProfile;
   throw new PolicyError("INVALID_POLICY", `TG_POLICY_PROFILE must be one of: ${Object.keys(profileRisks).join(", ")}.`);
 }
@@ -36,15 +36,18 @@ export class PolicyError extends Error {
 }
 
 export class Policy {
-  readonly profile = profile();
-  readonly allowedChatIds = new Set(csv("TG_ALLOWED_CHAT_IDS").map(Number).filter(Number.isSafeInteger));
-  readonly deniedChatIds = new Set(csv("TG_DENIED_CHAT_IDS").map(Number).filter(Number.isSafeInteger));
-  readonly allowedTools = new Set(csv("TG_ALLOWED_TOOLS"));
-  readonly deniedTools = new Set(csv("TG_DENIED_TOOLS"));
-  readonly fileRoots = roots();
-  readonly maxFileBytes = Number(process.env.TG_MAX_SEND_FILE_BYTES ?? 25 * 1024 * 1024);
-  readonly maxWritesPerMinute = Number(process.env.TG_MAX_WRITES_PER_MINUTE ?? 20);
-  private readonly writeLimiter = new WriteRateLimiter(this.maxWritesPerMinute, 60_000);
+  readonly profile: PolicyProfile;
+  readonly allowedChatIds: Set<number>;
+  readonly deniedChatIds: Set<number>;
+  readonly allowedTools: Set<string>;
+  readonly deniedTools: Set<string>;
+  readonly fileRoots: string[];
+  readonly maxFileBytes: number;
+  readonly maxWritesPerMinute: number;
+  private readonly writeLimiter: WriteRateLimiter;
+  constructor(private readonly environment: Record<string, string | undefined> = process.env, private readonly account = process.env.TG_ACCOUNT ?? "default") {
+    this.profile = profile(environment); this.allowedChatIds = new Set(csv("TG_ALLOWED_CHAT_IDS", environment).map(Number).filter(Number.isSafeInteger)); this.deniedChatIds = new Set(csv("TG_DENIED_CHAT_IDS", environment).map(Number).filter(Number.isSafeInteger)); this.allowedTools = new Set(csv("TG_ALLOWED_TOOLS", environment)); this.deniedTools = new Set(csv("TG_DENIED_TOOLS", environment)); this.fileRoots = roots(environment); this.maxFileBytes = Number(environment.TG_MAX_SEND_FILE_BYTES ?? 25 * 1024 * 1024); this.maxWritesPerMinute = Number(environment.TG_MAX_WRITES_PER_MINUTE ?? 20); this.writeLimiter = new WriteRateLimiter(this.maxWritesPerMinute, 60_000);
+  }
 
   describe() {
     return {
@@ -54,7 +57,7 @@ export class Policy {
       file_roots_configured: this.fileRoots.length,
       max_send_file_bytes: Number.isSafeInteger(this.maxFileBytes) && this.maxFileBytes > 0 ? this.maxFileBytes : undefined,
       max_writes_per_minute: Number.isSafeInteger(this.maxWritesPerMinute) && this.maxWritesPerMinute > 0 ? this.maxWritesPerMinute : undefined,
-      destructive_approval_configured: Boolean(process.env.TG_DESTRUCTIVE_APPROVAL_SECRET?.trim()),
+      destructive_approval_configured: Boolean(this.environment.TG_DESTRUCTIVE_APPROVAL_SECRET?.trim()),
     };
   }
 
@@ -67,7 +70,7 @@ export class Policy {
       if (risk !== "read" && this.allowedChatIds.size > 0 && !this.allowedChatIds.has(options.chatId)) throw new PolicyError("PEER_NOT_ALLOWED", `Chat ${options.chatId} is not in TG_ALLOWED_CHAT_IDS.`);
     }
     if (risk === "destructive") {
-      try { consumeApproval(process.env.TG_DESTRUCTIVE_APPROVAL_SECRET?.trim(), { tool, account: process.env.TG_ACCOUNT ?? "default", chatId: options.chatId, material: options.material }, options.approvalCode); }
+      try { consumeApproval(this.environment.TG_DESTRUCTIVE_APPROVAL_SECRET?.trim(), { tool, account: this.account, chatId: options.chatId, material: options.material }, options.approvalCode); }
       catch (error) { if (error instanceof ApprovalError) throw new PolicyError(error.code, error.message); throw error; }
     }
     if (risk !== "read") {

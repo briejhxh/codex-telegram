@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { configure, createClient } from "tdl";
 import { getTdjson } from "prebuilt-tdlib";
-import { configurationStatus, downloadsDirectory, loadConfig, maxDownloadBytes } from "../config.js";
+import { accountSettings, configurationStatus, downloadsDirectory, loadConfig, maxDownloadBytes, type AccountSettings } from "../config.js";
 import { log } from "../utils/logger.js";
 import { mcpAuthorizer } from "./auth.js";
 import { contentType, fileFromMessage, formatDate, inlineButtonRows, inlineButtons, isOutgoingMessage, isStrictChildPath, messageText, num, obj, preview, safeDownloadFilename, senderId, str, untrustedText } from "./helpers.js";
@@ -22,6 +22,8 @@ export class TelegramClient {
   private client?: ClientLike;
   private connecting?: Promise<void>;
   private readonly users = new Map<number, Promise<TdObject>>();
+  private readonly settings: AccountSettings;
+  constructor(settings?: AccountSettings) { this.settings = settings ?? accountSettings(process.env.TG_ACCOUNT ?? "default"); }
 
   async connect(authorizer?: unknown): Promise<void> {
     // Do not expose the client before TDLib authorization completes. MCP may
@@ -40,7 +42,7 @@ export class TelegramClient {
   }
 
   private async open(authorizer?: unknown): Promise<void> {
-    const config = loadConfig();
+    const config = loadConfig(this.settings);
     await Promise.all([fs.mkdir(config.databaseDirectory, { recursive: true }), fs.mkdir(config.filesDirectory, { recursive: true })]);
     configure({ tdjson: getTdjson(), verbosityLevel: 1 });
     const raw = createClient({ apiId: config.apiId, apiHash: config.apiHash, databaseDirectory: config.databaseDirectory, filesDirectory: config.filesDirectory }) as unknown as ClientLike;
