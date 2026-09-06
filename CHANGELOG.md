@@ -22,6 +22,8 @@ All notable changes are documented here.
   to prevent writes.
 - Marked Telegram output as untrusted, normalized control/invisible characters,
   and hardened download file names and unknown-size downloads.
+- Added typed TDLib error mapping, bounded retry/timeout policies, a deterministic
+  domain fake, `pnpm run doctor`, and opaque bounded pagination for message history.
 
 ## 0.1.0
 

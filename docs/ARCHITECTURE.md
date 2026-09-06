@@ -27,7 +27,10 @@ Codex host ── stdio JSON-RPC ── MCP tool ── Policy ── Telegram s
   `rateLimit.ts` prevents rapid repeated writes and `errors.ts` maps safe public
   errors.
 - `src/tools/` defines narrow MCP schemas and invokes policy before any write.
-- `src/telegram/client.ts` owns TDLib lifecycle and curated Telegram actions.
+- `src/telegram/service.ts` is the narrow domain boundary used by MCP tools;
+  `client.ts` is its TDLib implementation and `fakeService.ts` is a deterministic
+  in-memory test implementation. `errors.ts`, `retry.ts`, and `pagination.ts`
+  centralize safe failures, bounded retry/timeout behaviour, and cursors.
 - `src/telegram/helpers.ts` formats data, bounds untrusted strings, and applies
   cross-platform file-name checks.
 
@@ -44,3 +47,19 @@ Telegram messages, names, titles, captions, file names, and inline labels are
 external data. They cannot authorize a tool call. The tool response marks them
 as `untrusted_telegram_data`, normalizes invisible control/directional
 characters, and applies bounded output. Policy still makes the final decision.
+
+## Retry and idempotency
+
+Read-like TDLib requests receive bounded exponential retry with jitter. A
+FloodWait longer than the policy ceiling is returned with `retry_after` rather
+than retried early. Writes and transfers are never automatically replayed. If a
+write times out or the network fails after Telegram may have accepted it, the
+server returns `WRITE_OUTCOME_UNKNOWN`; callers must inspect the chat before
+deciding whether to send again.
+
+## Pagination
+
+Bounded collection responses use `items`, `has_more`, `next_cursor`, and
+`truncated`. Cursors are opaque, versioned, and bound to the specific chat;
+malformed or cross-chat cursors fail safely instead of changing the requested
+scope.

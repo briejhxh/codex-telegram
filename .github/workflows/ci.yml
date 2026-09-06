@@ -26,5 +26,11 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run check
+      - name: Doctor smoke test
+        env:
+          TG_API_ID: "1"
+          TG_API_HASH: ci-placeholder-not-a-secret
+          TG_CONFIG_DIR: ${{ runner.temp }}/codex-telegram-doctor
+        run: pnpm run doctor
       - name: Validate plugin manifest
         run: pnpm run plugin:validate
