@@ -1,5 +1,7 @@
 # Codex Telegram
 
+[Русская версия](README.ru.md)
+
 `codex-telegram` is a local [Model Context Protocol](https://modelcontextprotocol.io/) server and Codex plugin for a **personal Telegram account**. It uses TDLib/MTProto, not the Bot API or browser automation.
 
 The server runs on your computer. Telegram API credentials, TDLib database, authorization session, and downloaded media are stored in a private per-user directory and are never sent to a third-party service by this project.
