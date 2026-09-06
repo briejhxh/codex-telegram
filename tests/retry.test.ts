@@ -50,6 +50,12 @@ test("returns cancellation without retrying", async () => {
   await assert.rejects(() => executeWithRetry(async () => "no", { policy: operationPolicies.metadata, signal: controller.signal }), (error: unknown) => error instanceof TelegramError && error.code === "CANCELLED");
 });
 
+test("cancellation during retry backoff prevents the next attempt", async () => {
+  const controller = new AbortController(); let calls = 0;
+  await assert.rejects(() => executeWithRetry(async () => { calls += 1; throw new Error("network connection lost"); }, { policy: operationPolicies.metadata, signal: controller.signal, sleep: async () => { controller.abort(); throw new TelegramError("CANCELLED", "The operation was cancelled."); } }), (error: unknown) => error instanceof TelegramError && error.code === "CANCELLED");
+  assert.equal(calls, 1);
+});
+
 test("turns a write timeout into an uncertain-outcome error", async () => {
   await assert.rejects(() => executeWithRetry(() => new Promise<string>(() => undefined), { policy: { ...operationPolicies.write, timeoutMs: 1 } }), (error: unknown) => error instanceof TelegramError && error.code === "WRITE_OUTCOME_UNKNOWN");
 });

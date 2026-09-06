@@ -9,7 +9,7 @@ import { contentType, fileFromMessage, formatDate, inlineButtonRows, inlineButto
 import type { TdObject } from "./types.js";
 import { mediaSearchFilter, type MediaKind } from "./media.js";
 import { executeWithRetry, requestPolicy, withTimeout } from "./retry.js";
-import { telegramError } from "./errors.js";
+import { TelegramError, telegramError } from "./errors.js";
 
 type ClientLike = {
   login(authorizer: unknown): Promise<void>;
@@ -23,9 +23,12 @@ export class TelegramClient {
   private connecting?: Promise<void>;
   private readonly users = new Map<number, Promise<TdObject>>();
   private readonly settings: AccountSettings;
+  private aborter = new AbortController();
+  private closing = false;
   constructor(settings?: AccountSettings) { this.settings = settings ?? accountSettings(process.env.TG_ACCOUNT ?? "default"); }
 
   async connect(authorizer?: unknown): Promise<void> {
+    if (this.closing) throw new TelegramError("CANCELLED", "Telegram runtime is shutting down.");
     // Do not expose the client before TDLib authorization completes. MCP may
     // execute several read-only tools concurrently on the first request.
     if (this.connecting) return this.connecting;
@@ -35,7 +38,9 @@ export class TelegramClient {
       await this.connecting;
     } catch (error) {
       this.client = undefined;
-      throw error;
+      const mapped = telegramError(error);
+      if (mapped.code === "SESSION_LOCKED") throw new TelegramError("SESSION_LOCKED", `Telegram account '${this.settings.account}' is already being used by another codex-telegram process.`);
+      throw mapped;
     } finally {
       this.connecting = undefined;
     }
@@ -58,12 +63,17 @@ export class TelegramClient {
     log.info("Telegram authenticated");
   }
 
-  async close(): Promise<void> { await this.client?.close(); this.client = undefined; this.connecting = undefined; this.users.clear(); }
+  async close(): Promise<void> {
+    this.closing = true; this.aborter.abort();
+    const pending = this.connecting; if (pending) await withTimeout(pending.catch(() => undefined), 2_000, "Timed out while stopping TDLib.").catch(() => undefined);
+    await withTimeout(this.client?.close() ?? Promise.resolve(), 2_000, "Timed out while stopping TDLib.").catch(() => undefined);
+    this.client = undefined; this.connecting = undefined; this.users.clear();
+  }
   private async invoke(request: TdObject): Promise<TdObject> {
     await this.connect();
     const method = str(request._) ?? "unknown";
     const policy = requestPolicy(method);
-    try { return obj(await executeWithRetry(() => this.client!.invoke(request), { policy })); }
+    try { return obj(await executeWithRetry(() => this.client!.invoke(request), { policy, signal: this.aborter.signal })); }
     catch (error) {
       const mapped = telegramError(error, policy.kind === "write" || policy.kind === "transfer");
       log.error("Telegram request failed", mapped);
