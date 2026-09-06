@@ -15,8 +15,8 @@ importers:
         specifier: ^16.6.1
         version: 16.6.1
       prebuilt-tdlib:
-        specifier: ^0.1008052
-        version: 0.1008052.1
+        specifier: ^0.1008067
+        version: 0.1008067.0
       tdl:
         specifier: ^8.0.0
         version: 8.1.0
@@ -208,33 +208,45 @@ packages:
       '@cfworker/json-schema':
         optional: true
 
-  '@prebuilt-tdlib/darwin-arm64@0.1008052.1':
-    resolution: {integrity: sha512-VAapNk6sG3Ko130TlG2IjSh40Sy8/ImJHoSC5XdZ0p4o3lQX8r/nrBGKAekw46QDKP6znizi7PIvpoj11G9bNA==}
+  '@prebuilt-tdlib/darwin-arm64@0.1008067.0':
+    resolution: {integrity: sha512-dFefumR1NX2SSYf9p6fXyeLxw1+EL00Qe86ECqbtllWdP476gseScqU34hSzaR4RYsIuQZJDjaYGt1v2YiI7HA==}
     cpu: [arm64]
     os: [darwin]
 
-  '@prebuilt-tdlib/darwin-x64@0.1008052.1':
-    resolution: {integrity: sha512-XD6yO61bIDuZMAxmUlhcRCV5x+3hTyRMvDDyON7SlhlBGqKX39qoUmFq0DXj5FTDeFuXiXb0v9pb2jhoJYvk4w==}
+  '@prebuilt-tdlib/darwin-x64@0.1008067.0':
+    resolution: {integrity: sha512-tqSe7xBg1/5RzzTc7PlzYP45KTC0cwV3ZKvUqZvHHODrDzzWnwqltteQ/+3Fvk386NcwFRI4y5jHot6XvCH/3A==}
     cpu: [x64]
     os: [darwin]
 
-  '@prebuilt-tdlib/linux-arm64-glibc@0.1008052.1':
-    resolution: {integrity: sha512-wGbE4PZNhScnNCs988TVUuRAHskROXGvPkbube3c7XAnIeL8LGWfa5WDnQRaFbPmad3G145SJL+0il9u8dk8KA==}
+  '@prebuilt-tdlib/linux-arm64-glibc@0.1008067.0':
+    resolution: {integrity: sha512-MQbaqIR7Jw5kecmFVoLp82Za/5cHRdjuingQhrM1k85YQ5PC62Pov5i9qSkB+9JQVN97f89MMcbYeBtAliBN1Q==}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
 
-  '@prebuilt-tdlib/linux-x64-glibc@0.1008052.1':
-    resolution: {integrity: sha512-oahSltMXfFABrfmfrfLT2k0HA3IZwlS2YCx39yTEzvj3LeDyk6XIUYBqMA16MgORzkEBrVQI0c+ogDUEvYaEjg==}
+  '@prebuilt-tdlib/linux-arm64-musl@0.1008067.0':
+    resolution: {integrity: sha512-j4fZglP7Gx9p2awO+XQU1X/9zV0b2jYVV7PMAyyLjqBQjUqdr28du4Ds9itJFPgHVYAR+8LWpKtRQEjXEefCbQ==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@prebuilt-tdlib/linux-x64-glibc@0.1008067.0':
+    resolution: {integrity: sha512-ILSNFbjP/gRWNc0bTtyTOX1RW854vaUcSpc6GtXJQp7Hgwr/+m1GbzhU4hry4yeRk02EfsmqDaBQVdXSjBXgZg==}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
 
-  '@prebuilt-tdlib/types@0.1008052.1':
-    resolution: {integrity: sha512-42BDrgnuK/ky8+3yomCSbZitD9EPrCqaMHvhfmJPjACM1f1EAHZMFyQ97E09U3kfYtdZb8CrS1W6FBjzt+CsYg==}
+  '@prebuilt-tdlib/linux-x64-musl@0.1008067.0':
+    resolution: {integrity: sha512-sklKbRtHmh6Zc3k7s//hJpAP4+Z581ggETlnBt0WFcaAEdtpJRdiesttPJaWy1BcA/96SSARTBrM65Qf5yu/hg==}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
 
-  '@prebuilt-tdlib/win32-x64@0.1008052.1':
-    resolution: {integrity: sha512-LF+moAZSQ9Nxu2yHjmqPeEBnVzHlLCffdgJSAfiCsRPbS3iBZEqNtrpFZfcCq2S3Pidhom/5XMT02EHtHdWV9w==}
+  '@prebuilt-tdlib/types@0.1008067.0':
+    resolution: {integrity: sha512-mBQaxYsQ9tcZwi10m+eWw4QE5/Ltbu74zbXxXn8QpF3agQGmw6T6wZTHH30tuJAW6woYnLvQzAr0BADBoGGZPQ==}
+
+  '@prebuilt-tdlib/win32-x64@0.1008067.0':
+    resolution: {integrity: sha512-t5zVRgaQYXzoDXdUnLn0j/+MeHCagci3J5Bo2gpHlrqy0EFeNkXXewcyZ/4HduZxVvLSC41dHFt7gAcoV0DBjQ==}
     cpu: [x64]
     os: [win32]
 
@@ -518,8 +530,8 @@ packages:
     resolution: {integrity: sha512-wQ0b/W4Fr01qtpHlqSqspcj3EhBvimsdh0KlHhH8HRZnMsEa0ea2fTULOXOS9ccQr3om+GcGRk4e+isrZWV8qQ==}
     engines: {node: '>=16.20.0'}
 
-  prebuilt-tdlib@0.1008052.1:
-    resolution: {integrity: sha512-xd5E41pEFGTc87V1d3kAecnVrnZLg3PCuqY/0aUoURd+3EM7p7NDnyK/ku1HKlD9CjXGXsiEtbQB/qf/9o6kOA==}
+  prebuilt-tdlib@0.1008067.0:
+    resolution: {integrity: sha512-Cixz5A9XXZNoh7N1tJ8VQiAq0ShUjyG0lL0eM3H0XdkOc5WCiRyDT0eeVr8WXbdyydWiRBmczsN54lAwrEwJqw==}
 
   proxy-addr@2.0.7:
     resolution: {integrity: sha512-llQsMLSUDUPT44jdrU/O37qlnifitDP+ZwrmmZcoSKyLKvtZxpyV0n2/bD/N4tBAAZ/gJEdZU7KMraoK1+XYAg==}
@@ -742,22 +754,28 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@prebuilt-tdlib/darwin-arm64@0.1008052.1':
+  '@prebuilt-tdlib/darwin-arm64@0.1008067.0':
     optional: true
 
-  '@prebuilt-tdlib/darwin-x64@0.1008052.1':
+  '@prebuilt-tdlib/darwin-x64@0.1008067.0':
     optional: true
 
-  '@prebuilt-tdlib/linux-arm64-glibc@0.1008052.1':
+  '@prebuilt-tdlib/linux-arm64-glibc@0.1008067.0':
     optional: true
 
-  '@prebuilt-tdlib/linux-x64-glibc@0.1008052.1':
+  '@prebuilt-tdlib/linux-arm64-musl@0.1008067.0':
     optional: true
 
-  '@prebuilt-tdlib/types@0.1008052.1':
+  '@prebuilt-tdlib/linux-x64-glibc@0.1008067.0':
     optional: true
 
-  '@prebuilt-tdlib/win32-x64@0.1008052.1':
+  '@prebuilt-tdlib/linux-x64-musl@0.1008067.0':
+    optional: true
+
+  '@prebuilt-tdlib/types@0.1008067.0':
+    optional: true
+
+  '@prebuilt-tdlib/win32-x64@0.1008067.0':
     optional: true
 
   '@types/node@22.20.1':
@@ -1055,14 +1073,16 @@ snapshots:
 
   pkce-challenge@5.0.1: {}
 
-  prebuilt-tdlib@0.1008052.1:
+  prebuilt-tdlib@0.1008067.0:
     optionalDependencies:
-      '@prebuilt-tdlib/darwin-arm64': 0.1008052.1
-      '@prebuilt-tdlib/darwin-x64': 0.1008052.1
-      '@prebuilt-tdlib/linux-arm64-glibc': 0.1008052.1
-      '@prebuilt-tdlib/linux-x64-glibc': 0.1008052.1
-      '@prebuilt-tdlib/types': 0.1008052.1
-      '@prebuilt-tdlib/win32-x64': 0.1008052.1
+      '@prebuilt-tdlib/darwin-arm64': 0.1008067.0
+      '@prebuilt-tdlib/darwin-x64': 0.1008067.0
+      '@prebuilt-tdlib/linux-arm64-glibc': 0.1008067.0
+      '@prebuilt-tdlib/linux-arm64-musl': 0.1008067.0
+      '@prebuilt-tdlib/linux-x64-glibc': 0.1008067.0
+      '@prebuilt-tdlib/linux-x64-musl': 0.1008067.0
+      '@prebuilt-tdlib/types': 0.1008067.0
+      '@prebuilt-tdlib/win32-x64': 0.1008067.0
 
   proxy-addr@2.0.7:
     dependencies:

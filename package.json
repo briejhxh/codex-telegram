@@ -23,7 +23,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.2",
     "dotenv": "^16.6.1",
-    "prebuilt-tdlib": "^0.1008052",
+    "prebuilt-tdlib": "^0.1008067",
     "tdl": "^8.0.0",
     "zod": "^3.24.4"
   },
