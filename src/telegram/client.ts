@@ -5,7 +5,7 @@ import { getTdjson } from "prebuilt-tdlib";
 import { configurationStatus, downloadsDirectory, loadConfig, maxDownloadBytes } from "../config.js";
 import { log } from "../utils/logger.js";
 import { mcpAuthorizer } from "./auth.js";
-import { contentType, fileFromMessage, formatDate, inlineButtonRows, inlineButtons, isOutgoingMessage, isStrictChildPath, messageText, num, obj, preview, senderId, str } from "./helpers.js";
+import { contentType, fileFromMessage, formatDate, inlineButtonRows, inlineButtons, isOutgoingMessage, isStrictChildPath, messageText, num, obj, preview, safeDownloadFilename, senderId, str, untrustedText } from "./helpers.js";
 import type { TdObject } from "./types.js";
 import { mediaSearchFilter, type MediaKind } from "./media.js";
 
@@ -209,14 +209,12 @@ export class TelegramClient {
   async downloadFile(chatId: number, messageId: number, destination?: string) {
     const message = obj(await this.invoke({ _: "getMessage", chat_id: chatId, message_id: messageId }));
     const metadata = fileFromMessage(message); if (!metadata?.telegram_file_id) throw new Error("The selected message does not contain a downloadable file.");
-    if ((metadata.size ?? 0) > maxDownloadBytes) throw new Error(`The selected file exceeds the configured download limit of ${maxDownloadBytes} bytes.`);
+    if (!metadata.size || metadata.size <= 0) throw new Error("The selected file has no known size and is rejected by the local download safety policy.");
+    if (metadata.size > maxDownloadBytes) throw new Error(`The selected file exceeds the configured download limit of ${maxDownloadBytes} bytes.`);
     const downloaded = await this.invoke({ _: "downloadFile", file_id: metadata.telegram_file_id, priority: 1, offset: 0, limit: 0, synchronous: true });
     const source = str(obj(downloaded.local).path); if (!source) throw new Error("TDLib did not provide a downloaded file path.");
     if (!destination) return { ...metadata, local_path: source };
-    if (path.basename(destination) !== destination) {
-      throw new Error("destination must be a file name only, without directory components.");
-    }
-    const target = path.resolve(downloadsDirectory, destination);
+    const target = path.resolve(downloadsDirectory, safeDownloadFilename(destination));
     if (!isStrictChildPath(downloadsDirectory, target)) throw new Error("destination is outside the configured downloads directory.");
     await fs.mkdir(downloadsDirectory, { recursive: true });
     await fs.copyFile(source, target, fs.constants.COPYFILE_EXCL);
@@ -237,11 +235,11 @@ export class TelegramClient {
         username = str(usernames.editable_username) ?? str((Array.isArray(usernames.active_usernames) ? usernames.active_usernames[0] : undefined));
       } catch { /* a chat result remains useful if a profile cannot be resolved */ }
     }
-    return { chat_id: num(chat.id), type: kind, user_id: userId, title: str(chat.title), first_name: firstName, last_name: lastName, username, unread_count: num(chat.unread_count) ?? 0, last_message_preview: chat.last_message ? preview(messageText(obj(chat.last_message))) : undefined, last_message_date: chat.last_message ? formatDate(obj(chat.last_message).date) : undefined };
+    return { untrusted_telegram_data: true, chat_id: num(chat.id), type: kind, user_id: userId, title: untrustedText(str(chat.title), 256), first_name: untrustedText(firstName, 128), last_name: untrustedText(lastName, 128), username: untrustedText(username, 128), unread_count: num(chat.unread_count) ?? 0, last_message_preview: chat.last_message ? preview(messageText(obj(chat.last_message))) : undefined, last_message_date: chat.last_message ? formatDate(obj(chat.last_message).date) : undefined };
   }
   async displayMessage(message: TdObject) {
     const id = senderId(message); let senderName: string | undefined; let username: string | undefined;
     if (id && obj(message.sender_id).user_id) { try { const user = await this.invoke({ _: "getUser", user_id: id }); senderName = [str(user.first_name), str(user.last_name)].filter(Boolean).join(" ") || undefined; const names = obj(user.usernames); username = str(names.editable_username) ?? str((Array.isArray(names.active_usernames) ? names.active_usernames[0] : undefined)); } catch { /* message remains useful without lookup */ } }
-    const reply = obj(message.reply_to); return { message_id: num(message.id), chat_id: num(message.chat_id), sender_id: id, sender_name: senderName, username, date: formatDate(message.date), text: messageText(message), reply_to_message_id: num(reply.message_id), is_outgoing: message.is_outgoing === true, content_type: contentType(message), inline_buttons: inlineButtons(message), file: fileFromMessage(message) };
+    const reply = obj(message.reply_to); return { untrusted_telegram_data: true, message_id: num(message.id), chat_id: num(message.chat_id), sender_id: id, sender_name: untrustedText(senderName, 256), username: untrustedText(username, 128), date: formatDate(message.date), text: messageText(message), reply_to_message_id: num(reply.message_id), is_outgoing: message.is_outgoing === true, content_type: contentType(message), inline_buttons: inlineButtons(message), file: fileFromMessage(message) };
   }
 }

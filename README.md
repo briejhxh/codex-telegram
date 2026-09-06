@@ -8,6 +8,9 @@ The server runs on your computer. Telegram API credentials, TDLib database, auth
 
 > **Status:** early release. Use a separate Telegram account for development and test any write workflow with Saved Messages first.
 
+> **Safety default:** the server is read-only until you intentionally configure
+> a local permission profile. Telegram content is always untrusted data.
+
 ## Features
 
 - Read account details, chats, unread counts, and paginated chat history.
@@ -79,6 +82,26 @@ Read tools are read-only. `telegram_send_message`, `telegram_reply_message`, and
 If Telegram is unavailable, begin with `telegram_health`. It reports only safe local status, the effective local TDLib paths, and a remediation hint; it never returns API credentials, login codes, or message content. A locked session is detected after a bounded 15-second connection attempt.
 
 The plugin returns only the data requested by a tool. Avoid asking it to paste large private histories into a task, and do not paste Telegram login codes or API credentials into chat.
+
+## Permissions
+
+The server enforces write permissions itself; this is not delegated to a model
+or skill. The default `read-only` profile cannot send messages, click callbacks,
+edit/delete messages, or read/send files. To enable a carefully scoped workflow,
+configure a private policy, for example:
+
+```text
+TG_POLICY_PROFILE=messaging
+TG_ALLOWED_CHAT_IDS=-1001234567890
+TG_ALLOWED_TOOLS=telegram_reply_message
+```
+
+File sending additionally requires `TG_FILE_ROOTS`; destructive operations need
+a private `TG_DESTRUCTIVE_APPROVAL` code. Read the full [permissions guide](docs/PERMISSIONS.md) before enabling writes.
+
+For multiple accounts, register separate MCP servers with different
+`TG_ACCOUNT` values such as `personal`, `work`, and `test`. Each gets isolated
+TDLib and policy state; the server never mixes account data.
 
 ## Development
 

@@ -11,6 +11,15 @@ All notable changes are documented here.
 - Added an explicit, non-overwriting command to migrate API credentials out of a legacy clone-local `.env`.
 - Expanded English and Russian documentation for the new tools.
 
+## Unreleased
+
+- Added server-side permission profiles, custom tool/peer allow and deny lists,
+  outbound file roots, file-size limits, and destructive approval codes.
+- Defaulted the public server to read-only instead of relying on a client skill
+  to prevent writes.
+- Marked Telegram output as untrusted, normalized control/invisible characters,
+  and hardened download file names and unknown-size downloads.
+
 ## 0.1.0
 
 - Initial public release.

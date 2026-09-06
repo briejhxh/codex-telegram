@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { TelegramClient } from "./telegram/client.js";
+import { Policy } from "./security/policy.js";
 import { log } from "./utils/logger.js";
 import { registerDownloadFile } from "./tools/downloadFile.js";
 import { registerGetChat } from "./tools/getChat.js";
@@ -22,8 +23,9 @@ import { registerSendMessage } from "./tools/sendMessage.js";
 import { registerManageMessage } from "./tools/manageMessage.js";
 
 const telegram = new TelegramClient();
+const policy = new Policy();
 const server = new McpServer({ name: "codex-telegram", version: "0.2.0" });
-const context = { telegram };
+const context = { telegram, policy };
 
 registerGetMe(server, context);
 registerHealth(server, context);

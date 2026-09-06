@@ -14,7 +14,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node --import tsx --test tests/helpers.test.ts",
+    "test": "node --import tsx --test tests/helpers.test.ts tests/policy.test.ts",
     "plugin:validate": "node scripts/validate-plugin.mjs",
     "check": "pnpm run typecheck && pnpm run test && pnpm run build && pnpm run plugin:validate",
     "setup": "tsx src/setup.ts"

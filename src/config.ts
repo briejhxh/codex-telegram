@@ -5,13 +5,19 @@ import dotenv from "dotenv";
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-function defaultConfigDirectory(): string {
+function defaultStateRoot(): string {
   if (process.platform === "win32") return path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"), "codex-telegram");
   return path.join(process.env.XDG_STATE_HOME ?? path.join(os.homedir(), ".local", "state"), "codex-telegram");
 }
 
+export function accountName(value = process.env.TG_ACCOUNT ?? "default"): string {
+  if (!/^[a-z0-9][a-z0-9_-]{0,31}$/i.test(value)) throw new Error("TG_ACCOUNT must be 1-32 letters, numbers, underscores, or hyphens.");
+  return value;
+}
+
 /** A user-owned directory, deliberately outside a cloned or plugin-cache repository. */
-export const configDirectory = path.resolve(process.env.TG_CONFIG_DIR ?? defaultConfigDirectory());
+export const activeAccount = accountName();
+export const configDirectory = path.resolve(process.env.TG_CONFIG_DIR ?? (process.env.TG_ACCOUNT ? path.join(defaultStateRoot(), "profiles", activeAccount) : defaultStateRoot()));
 export const configFile = path.resolve(process.env.TG_CONFIG_FILE ?? path.join(configDirectory, "config.env"));
 
 // Environment variables take precedence. The repository .env is a development-only
@@ -34,6 +40,7 @@ function tdlibDirectories() {
 export function configurationStatus() {
   return {
     configured: Boolean(process.env.TG_API_ID?.trim() && process.env.TG_API_HASH?.trim()),
+    account: activeAccount,
     config_file: configFile,
     state_directory: configDirectory,
     database_directory: tdlibDirectories().databaseDirectory,
