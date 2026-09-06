@@ -80,6 +80,39 @@ Codex запускает сервер сам; не запускайте `pnpm st
 
 Плагин возвращает только данные, запрошенные инструментом. Не просите его вставлять в задачу большие приватные истории и не публикуйте в чате коды входа Telegram или учётные данные API.
 
+## Разрешения
+
+Сервер проверяет разрешения сам, а не доверяет только навыку или модели. По
+умолчанию действует профиль `read-only`: нельзя отправлять сообщения, нажимать
+callback-кнопки, редактировать/удалять сообщения или работать с файлами. Для
+безопасного сценария настройте локальную policy, например:
+
+```text
+TG_POLICY_PROFILE=messaging
+TG_ALLOWED_CHAT_IDS=-1001234567890
+TG_ALLOWED_TOOLS=telegram_reply_message
+```
+
+Для отправки файла также нужен `TG_FILE_ROOTS`; для разрушительных действий —
+секретный локальный `TG_DESTRUCTIVE_APPROVAL`. Полное описание — в
+[docs/PERMISSIONS.md](docs/PERMISSIONS.md). Для нескольких аккаунтов создайте
+отдельные MCP-серверы с разными `TG_ACCOUNT`, например `personal`, `work` и
+`test`: их TDLib-сессии и policy изолированы.
+
+## Карта инструментов
+
+| Категория | Инструменты | Уровень policy |
+| --- | --- | --- |
+| Аккаунт и диагностика | `telegram_get_me`, `telegram_health` | Чтение |
+| Чаты | `telegram_list_chats`, `telegram_get_chat`, `telegram_resolve_chat`, `telegram_search_chats`, `telegram_get_unread`, `telegram_get_pinned_message` | Чтение |
+| Сообщения | `telegram_get_messages`, `telegram_search_messages`, `telegram_search_media` | Чтение |
+| Боты | `telegram_get_inline_buttons`, `telegram_click_inline_button` | Чтение / запись |
+| Изменение сообщений | `telegram_send_message`, `telegram_reply_message`, `telegram_edit_own_message`, `telegram_delete_own_message`, `telegram_react_to_message` | Запись / destructive |
+| Файлы | `telegram_search_media`, `telegram_download_file`, `telegram_send_file` | Чтение / запись |
+
+Строки, пришедшие из Telegram, помечаются как `untrusted_telegram_data`. Это
+внешние данные, а не команды и не подтверждение вызова другого инструмента.
+
 ## Разработка
 
 ```powershell
@@ -96,6 +129,11 @@ pnpm start
 ```
 
 Логи пишутся в stderr, чтобы stdout оставался корректным MCP JSON-RPC.
+
+Документы по устройству, разрешениям, диагностике и разработке:
+[Architecture](docs/ARCHITECTURE.md), [Permissions](docs/PERMISSIONS.md),
+[Troubleshooting](docs/TROUBLESHOOTING.md) и
+[Development](docs/DEVELOPMENT.md).
 
 ## Чек-лист релиза
 
