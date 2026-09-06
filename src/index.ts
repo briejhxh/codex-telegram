@@ -24,7 +24,7 @@ import { registerManageMessage } from "./tools/manageMessage.js";
 const accounts = new AccountManager();
 const { service: { telegram, policy } } = accounts.get();
 const server = new McpServer({ name: "codex-telegram", version: "0.2.0" });
-const context = { telegram, policy };
+const context = { accounts, telegram, policy };
 
 registerGetMe(server, context);
 registerHealth(server, context);
