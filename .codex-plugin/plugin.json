@@ -1,6 +1,6 @@
 {
   "name": "codex-telegram",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Privacy-first local Telegram user-account access through TDLib and MCP.",
   "author": {
     "name": "aagafon1215-source",
@@ -17,6 +17,7 @@
     "category": "Productivity",
     "capabilities": [
       "Read Telegram",
+      "Diagnose local connection",
       "Send messages",
       "Download files",
       "Use bot inline buttons",

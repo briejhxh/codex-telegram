@@ -12,9 +12,13 @@ export interface TelegramService {
   messages(chatId: number, limit: number, fromMessageId?: number): Promise<TdObject[]>;
   searchMessages(query: string, limit: number, chatId?: number): Promise<TdObject[]>;
   searchMedia(chatId: number, kind: MediaKind, limit: number, query?: string): Promise<TdObject[]>;
+  health(checkConnection: boolean): Promise<Record<string, unknown>>;
+  pinnedMessage(chatId: number): Promise<TdObject>;
   getInlineButtons(chatId: number, messageId: number): Promise<unknown>;
   clickInlineButton(chatId: number, messageId: number, row: number, column: number): Promise<unknown>;
   reactToMessage(chatId: number, messageId: number, emoji: string, remove: boolean): Promise<unknown>;
+  editOwnMessage(chatId: number, messageId: number, text: string): Promise<TdObject>;
+  deleteOwnMessage(chatId: number, messageId: number): Promise<unknown>;
   sendMessage(chatId: number, text: string, replyToMessageId?: number): Promise<TdObject>;
   sendFile(chatId: number, filePath: string, caption?: string): Promise<TdObject>;
   downloadFile(chatId: number, messageId: number, destination?: string): Promise<unknown>;

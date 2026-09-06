@@ -11,11 +11,14 @@ The server runs on your computer. Telegram API credentials, TDLib database, auth
 ## Features
 
 - Read account details, chats, unread counts, and paginated chat history.
+- Diagnose local configuration, TDLib session, and authentication problems without exposing secrets.
+- Resolve a chat by name or `@username`, identify exact matches, and read its pinned message.
 - Search chats and messages, including contacts and public usernames.
 - Find documents, media, voice notes, and links in a specific chat without downloading them.
 - Send and reply to messages, upload files, and download selected media.
 - Inspect bot inline keyboards and press safe callback buttons.
 - Add or remove an explicitly approved emoji reaction.
+- Edit or delete only messages sent by the authenticated account, with explicit confirmation.
 - Keep all secret material and TDLib state outside the repository by default.
 
 The server deliberately does **not** click URL, login, web-app, game, payment, or password buttons. It does not scrape Telegram Web or ask third-party bots for account/contact IDs.
@@ -43,7 +46,9 @@ pnpm run login
 
 On Windows, state is stored in `%LOCALAPPDATA%\codex-telegram`. On macOS/Linux it is stored in `~/.local/state/codex-telegram`. Set `TG_CONFIG_DIR` before running setup to use another directory. You can also set `TG_CONFIG_FILE`, `TG_DATABASE_DIR`, `TG_FILES_DIR`, or `TG_DOWNLOADS_DIR` to absolute paths. Explicit downloads accept a file name only, are saved under `TG_DOWNLOADS_DIR`, and never overwrite a file. Downloads are capped at 100 MiB by default; set `TG_MAX_DOWNLOAD_BYTES` to a positive byte value to change the cap.
 
-For local development only, copying `.env.example` to `.env` is supported. Never commit that file.
+For local development only, copying `.env.example` to `.env` is supported. Set `TG_USE_DOTENV=1` to opt in to loading it; this prevents a cloned repository from silently becoming the location of a Telegram session. Never commit that file.
+
+If you used an older checkout that stored API credentials in `.env`, run `pnpm run migrate-legacy-config` once. It copies only the API credentials to the private configuration file and never overwrites an existing one; then run `pnpm run login` to create a session in the private state directory.
 
 ## Add it to Codex
 
@@ -68,6 +73,10 @@ If `node` or `pnpm` is unavailable because you only have Codex Desktop installed
 Read tools are read-only. `telegram_send_message`, `telegram_reply_message`, and `telegram_send_file` change external state; the included Codex skill requires an explicit recipient and exact content confirmation before they are called.
 
 `telegram_click_inline_button` can trigger bot state changes. It may be used only after the user has explicitly authorized the requested button workflow. The tool accepts only callback buttons and refuses high-risk button types.
+
+`telegram_edit_own_message` and `telegram_delete_own_message` can act only on outgoing messages from the authenticated account. Both require confirmation; deletion is marked destructive and asks Telegram to revoke the message for everyone when Telegram permits.
+
+If Telegram is unavailable, begin with `telegram_health`. It reports only safe local status, the effective local TDLib paths, and a remediation hint; it never returns API credentials, login codes, or message content. A locked session is detected after a bounded 15-second connection attempt.
 
 The plugin returns only the data requested by a tool. Avoid asking it to paste large private histories into a task, and do not paste Telegram login codes or API credentials into chat.
 

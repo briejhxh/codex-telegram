@@ -59,6 +59,11 @@ export function senderId(message: TdObject): number | undefined {
   const sender = obj(message.sender_id); return num(sender.user_id) ?? num(sender.chat_id);
 }
 
+/** Telegram marks messages created by the current account as outgoing. */
+export function isOutgoingMessage(message: TdObject): boolean {
+  return message.is_outgoing === true;
+}
+
 export type InlineButton = { row: number; column: number; text?: string; type: string; can_click: boolean };
 
 /**

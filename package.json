@@ -1,6 +1,6 @@
 {
   "name": "codex-telegram",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
   "type": "module",
   "description": "Privacy-first local Telegram user-account MCP server for Codex, powered by TDLib.",
@@ -18,6 +18,7 @@
     "plugin:validate": "node scripts/validate-plugin.mjs",
     "check": "pnpm run typecheck && pnpm run test && pnpm run build && pnpm run plugin:validate",
     "setup": "tsx src/setup.ts"
+    ,"migrate-legacy-config": "tsx src/migrateLegacyConfig.ts"
   },
   "engines": { "node": ">=20" },
   "dependencies": {

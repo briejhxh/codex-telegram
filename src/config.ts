@@ -17,9 +17,30 @@ export const configFile = path.resolve(process.env.TG_CONFIG_FILE ?? path.join(c
 // Environment variables take precedence. The repository .env is a development-only
 // fallback; the setup command writes credentials to the user-owned configFile instead.
 dotenv.config({ path: configFile });
-dotenv.config({ path: path.join(projectRoot, ".env") });
+// A clone-local .env is opt-in so a repository checkout can never silently
+// become the location of a Telegram session or override private user settings.
+if (process.env.TG_USE_DOTENV === "1") dotenv.config({ path: path.join(projectRoot, ".env") });
 
 export const downloadsDirectory = path.resolve(process.env.TG_DOWNLOADS_DIR ?? path.join(configDirectory, "downloads"));
+
+function tdlibDirectories() {
+  return {
+    databaseDirectory: path.resolve(process.env.TG_DATABASE_DIR ?? path.join(configDirectory, "tdlib", "database")),
+    filesDirectory: path.resolve(process.env.TG_FILES_DIR ?? path.join(configDirectory, "tdlib", "files")),
+  };
+}
+
+/** Safe, non-secret configuration data intended for the diagnostic MCP tool. */
+export function configurationStatus() {
+  return {
+    configured: Boolean(process.env.TG_API_ID?.trim() && process.env.TG_API_HASH?.trim()),
+    config_file: configFile,
+    state_directory: configDirectory,
+    database_directory: tdlibDirectories().databaseDirectory,
+    files_directory: tdlibDirectories().filesDirectory,
+    downloads_directory: downloadsDirectory,
+  };
+}
 
 function positiveIntegerEnv(name: string, fallback: number): number {
   const value = process.env[name];
@@ -44,8 +65,7 @@ export function loadConfig() {
   return {
     apiId,
     apiHash: required("TG_API_HASH"),
-    databaseDirectory: path.resolve(process.env.TG_DATABASE_DIR ?? path.join(configDirectory, "tdlib", "database")),
-    filesDirectory: path.resolve(process.env.TG_FILES_DIR ?? path.join(configDirectory, "tdlib", "files")),
+    ...tdlibDirectories(),
   };
 }
 

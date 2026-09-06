@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { inlineButtonRows, inlineButtons, isStrictChildPath } from "../src/telegram/helpers.js";
+import { inlineButtonRows, inlineButtons, isOutgoingMessage, isStrictChildPath } from "../src/telegram/helpers.js";
 import { mediaSearchFilter } from "../src/telegram/media.js";
 
 test("allows download destinations only below the configured directory", () => {
@@ -61,4 +61,10 @@ test("maps media kinds to supported TDLib search filters", () => {
   assert.deepEqual(mediaSearchFilter("voice"), { _: "searchMessagesFilterVoiceNote" });
   assert.deepEqual(mediaSearchFilter("photo"), { _: "searchMessagesFilterPhotoAndVideo" });
   assert.deepEqual(mediaSearchFilter("video"), { _: "searchMessagesFilterPhotoAndVideo" });
+});
+
+test("marks only messages sent by the current account as editable", () => {
+  assert.equal(isOutgoingMessage({ is_outgoing: true }), true);
+  assert.equal(isOutgoingMessage({ is_outgoing: false }), false);
+  assert.equal(isOutgoingMessage({}), false);
 });

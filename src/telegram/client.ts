@@ -2,10 +2,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { configure, createClient } from "tdl";
 import { getTdjson } from "prebuilt-tdlib";
-import { downloadsDirectory, loadConfig, maxDownloadBytes } from "../config.js";
+import { configurationStatus, downloadsDirectory, loadConfig, maxDownloadBytes } from "../config.js";
 import { log } from "../utils/logger.js";
 import { mcpAuthorizer } from "./auth.js";
-import { contentType, fileFromMessage, formatDate, inlineButtonRows, inlineButtons, isStrictChildPath, messageText, num, obj, preview, senderId, str } from "./helpers.js";
+import { contentType, fileFromMessage, formatDate, inlineButtonRows, inlineButtons, isOutgoingMessage, isStrictChildPath, messageText, num, obj, preview, senderId, str } from "./helpers.js";
 import type { TdObject } from "./types.js";
 import { mediaSearchFilter, type MediaKind } from "./media.js";
 
@@ -15,6 +15,20 @@ type ClientLike = {
   close(): Promise<void>;
   on(event: "error", listener: (error: Error) => void): unknown;
 };
+
+const LOGIN_TIMEOUT_MS = 15_000;
+
+async function within<T>(work: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<T>((_, reject) => { timer = setTimeout(() => reject(new Error(message)), timeoutMs); }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 export class TelegramClient {
   private client?: ClientLike;
@@ -43,7 +57,13 @@ export class TelegramClient {
     const raw = createClient({ apiId: config.apiId, apiHash: config.apiHash, databaseDirectory: config.databaseDirectory, filesDirectory: config.filesDirectory }) as unknown as ClientLike;
     raw.on("error", (error) => log.error("TDLib client error", error));
     this.client = raw;
-    await raw.login(authorizer ?? mcpAuthorizer());
+    try {
+      await within(raw.login(authorizer ?? mcpAuthorizer()), LOGIN_TIMEOUT_MS, "Timed out while opening TDLib. Another process may be using this Telegram session database.");
+    } catch (error) {
+      await within(raw.close(), 2_000, "Timed out while closing TDLib.").catch(() => undefined);
+      this.client = undefined;
+      throw error;
+    }
     log.info("Telegram authenticated");
   }
 
@@ -55,7 +75,21 @@ export class TelegramClient {
   }
 
   async getMe() { return this.invoke({ _: "getMe" }); }
+  async health(checkConnection: boolean): Promise<Record<string, unknown>> {
+    const status = configurationStatus();
+    if (!status.configured || !checkConnection) return { ...status, connection: status.configured ? "not_checked" : "not_configured" };
+    try {
+      const me = await this.getMe();
+      return { ...status, connection: "authenticated", account_id: num(me.id) };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown Telegram error";
+      const authentication = /not authenticated|authorization|login/i.test(message);
+      const locked = /lock file|already in use|timed out while opening tdlib/i.test(message);
+      return { ...status, connection: authentication ? "authentication_required" : locked ? "session_locked" : "unavailable", hint: authentication ? "Run pnpm run login in a terminal, then restart Codex." : locked ? "Close the other Codex or Telegram plugin process using this TDLib database, then restart Codex." : "Retry after checking the network and local TDLib state directory." };
+    }
+  }
   async getChat(chatId: number) { return this.invoke({ _: "getChat", chat_id: chatId }); }
+  async pinnedMessage(chatId: number) { return this.invoke({ _: "getChatPinnedMessage", chat_id: chatId }); }
   async listChats(limit: number) {
     const result = await this.invoke({ _: "getChats", chat_list: { _: "chatListMain" }, limit });
     return Promise.all((Array.isArray(result.chat_ids) ? result.chat_ids : []).map((id) => this.getChat(Number(id))));
@@ -150,6 +184,20 @@ export class TelegramClient {
   async reactToMessage(chatId: number, messageId: number, emoji: string, remove: boolean) {
     await this.invoke({ _: "setMessageReaction", chat_id: chatId, message_id: messageId, reaction_type: remove ? null : { _: "reactionTypeEmoji", emoji }, is_big: false, update_recent_reactions: true });
     return { chat_id: chatId, message_id: messageId, emoji, removed: remove };
+  }
+  private async requireOwnMessage(chatId: number, messageId: number): Promise<TdObject> {
+    const message = await this.invoke({ _: "getMessage", chat_id: chatId, message_id: messageId });
+    if (!isOutgoingMessage(message)) throw new Error("Only messages sent by the authenticated account can be changed or deleted.");
+    return message;
+  }
+  async editOwnMessage(chatId: number, messageId: number, text: string) {
+    await this.requireOwnMessage(chatId, messageId);
+    return this.invoke({ _: "editMessageText", chat_id: chatId, message_id: messageId, reply_markup: null, input_message_content: { _: "inputMessageText", text: { _: "formattedText", text, entities: [] }, link_preview_options: null, clear_draft: false } });
+  }
+  async deleteOwnMessage(chatId: number, messageId: number) {
+    await this.requireOwnMessage(chatId, messageId);
+    await this.invoke({ _: "deleteMessages", chat_id: chatId, message_ids: [messageId], revoke: true });
+    return { chat_id: chatId, message_id: messageId, deleted: true, revoked_for_all: true };
   }
   async sendMessage(chatId: number, text: string, replyToMessageId?: number) {
     return this.invoke({ _: "sendMessage", chat_id: chatId, reply_to: replyToMessageId ? { _: "inputMessageReplyToMessage", message_id: replyToMessageId } : null, options: null, reply_markup: null, input_message_content: { _: "inputMessageText", text: { _: "formattedText", text, entities: [] }, link_preview_options: null, clear_draft: false } });
