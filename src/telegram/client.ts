@@ -17,6 +17,7 @@ type ClientLike = {
   close(): Promise<void>;
   on(event: "error", listener: (error: Error) => void): unknown;
 };
+type ClientFactory = (options: { apiId: number; apiHash: string; databaseDirectory: string; filesDirectory: string }) => ClientLike;
 
 export class TelegramClient {
   private client?: ClientLike;
@@ -25,7 +26,8 @@ export class TelegramClient {
   private readonly settings: AccountSettings;
   private aborter = new AbortController();
   private closing = false;
-  constructor(settings?: AccountSettings) { this.settings = settings ?? accountSettings(process.env.TG_ACCOUNT ?? "default"); }
+  private readonly factory: ClientFactory;
+  constructor(settings?: AccountSettings, factory: ClientFactory = (options) => createClient(options) as unknown as ClientLike) { this.settings = settings ?? accountSettings(process.env.TG_ACCOUNT ?? "default"); this.factory = factory; }
 
   async connect(authorizer?: unknown): Promise<void> {
     if (this.closing) throw new TelegramError("CANCELLED", "Telegram runtime is shutting down.");
@@ -50,7 +52,7 @@ export class TelegramClient {
     const config = loadConfig(this.settings);
     await Promise.all([fs.mkdir(config.databaseDirectory, { recursive: true }), fs.mkdir(config.filesDirectory, { recursive: true })]);
     configure({ tdjson: getTdjson(), verbosityLevel: 1 });
-    const raw = createClient({ apiId: config.apiId, apiHash: config.apiHash, databaseDirectory: config.databaseDirectory, filesDirectory: config.filesDirectory }) as unknown as ClientLike;
+    const raw = this.factory({ apiId: config.apiId, apiHash: config.apiHash, databaseDirectory: config.databaseDirectory, filesDirectory: config.filesDirectory });
     raw.on("error", (error) => log.error("TDLib client error", error));
     this.client = raw;
     try {
