@@ -33,6 +33,7 @@ async function within<T>(work: Promise<T>, timeoutMs: number, message: string): 
 export class TelegramClient {
   private client?: ClientLike;
   private connecting?: Promise<void>;
+  private readonly users = new Map<number, Promise<TdObject>>();
 
   async connect(authorizer?: unknown): Promise<void> {
     // Do not expose the client before TDLib authorization completes. MCP may
@@ -67,7 +68,7 @@ export class TelegramClient {
     log.info("Telegram authenticated");
   }
 
-  async close(): Promise<void> { await this.client?.close(); this.client = undefined; this.connecting = undefined; }
+  async close(): Promise<void> { await this.client?.close(); this.client = undefined; this.connecting = undefined; this.users.clear(); }
   private async invoke(request: TdObject): Promise<TdObject> {
     await this.connect();
     try { return obj(await this.client!.invoke(request)); }
@@ -75,6 +76,17 @@ export class TelegramClient {
   }
 
   async getMe() { return this.invoke({ _: "getMe" }); }
+  private getUserCached(userId: number): Promise<TdObject> {
+    const existing = this.users.get(userId);
+    if (existing) return existing;
+    const request = this.invoke({ _: "getUser", user_id: userId }).catch((error) => {
+      this.users.delete(userId);
+      throw error;
+    });
+    this.users.set(userId, request);
+    if (this.users.size > 500) this.users.delete(this.users.keys().next().value!);
+    return request;
+  }
   async health(checkConnection: boolean): Promise<Record<string, unknown>> {
     const status = configurationStatus();
     if (!status.configured || !checkConnection) return { ...status, connection: status.configured ? "not_checked" : "not_configured" };
@@ -228,7 +240,7 @@ export class TelegramClient {
     let username: string | undefined;
     if (userId) {
       try {
-        const user = await this.invoke({ _: "getUser", user_id: userId });
+        const user = await this.getUserCached(userId);
         firstName = str(user.first_name);
         lastName = str(user.last_name);
         const usernames = obj(user.usernames);
@@ -239,7 +251,7 @@ export class TelegramClient {
   }
   async displayMessage(message: TdObject) {
     const id = senderId(message); let senderName: string | undefined; let username: string | undefined;
-    if (id && obj(message.sender_id).user_id) { try { const user = await this.invoke({ _: "getUser", user_id: id }); senderName = [str(user.first_name), str(user.last_name)].filter(Boolean).join(" ") || undefined; const names = obj(user.usernames); username = str(names.editable_username) ?? str((Array.isArray(names.active_usernames) ? names.active_usernames[0] : undefined)); } catch { /* message remains useful without lookup */ } }
+    if (id && obj(message.sender_id).user_id) { try { const user = await this.getUserCached(id); senderName = [str(user.first_name), str(user.last_name)].filter(Boolean).join(" ") || undefined; const names = obj(user.usernames); username = str(names.editable_username) ?? str((Array.isArray(names.active_usernames) ? names.active_usernames[0] : undefined)); } catch { /* message remains useful without lookup */ } }
     const reply = obj(message.reply_to); return { untrusted_telegram_data: true, message_id: num(message.id), chat_id: num(message.chat_id), sender_id: id, sender_name: untrustedText(senderName, 256), username: untrustedText(username, 128), date: formatDate(message.date), text: messageText(message), reply_to_message_id: num(reply.message_id), is_outgoing: message.is_outgoing === true, content_type: contentType(message), inline_buttons: inlineButtons(message), file: fileFromMessage(message) };
   }
 }
