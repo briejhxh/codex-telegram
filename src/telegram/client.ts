@@ -2,12 +2,14 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { configure, createClient } from "tdl";
 import { getTdjson } from "prebuilt-tdlib";
-import { configurationStatus, downloadsDirectory, loadConfig, maxDownloadBytes } from "../config.js";
+import { accountSettings, configurationStatus, downloadsDirectory, loadConfig, maxDownloadBytes, type AccountSettings } from "../config.js";
 import { log } from "../utils/logger.js";
 import { mcpAuthorizer } from "./auth.js";
-import { contentType, fileFromMessage, formatDate, inlineButtonRows, inlineButtons, isOutgoingMessage, isStrictChildPath, messageText, num, obj, preview, senderId, str } from "./helpers.js";
+import { contentType, fileFromMessage, formatDate, inlineButtonRows, inlineButtons, isOutgoingMessage, isStrictChildPath, messageText, num, obj, preview, safeDownloadFilename, senderId, str, untrustedText } from "./helpers.js";
 import type { TdObject } from "./types.js";
 import { mediaSearchFilter, type MediaKind } from "./media.js";
+import { executeWithRetry, requestPolicy, withTimeout } from "./retry.js";
+import { TelegramError, telegramError } from "./errors.js";
 
 type ClientLike = {
   login(authorizer: unknown): Promise<void>;
@@ -15,26 +17,20 @@ type ClientLike = {
   close(): Promise<void>;
   on(event: "error", listener: (error: Error) => void): unknown;
 };
-
-const LOGIN_TIMEOUT_MS = 15_000;
-
-async function within<T>(work: Promise<T>, timeoutMs: number, message: string): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  try {
-    return await Promise.race([
-      work,
-      new Promise<T>((_, reject) => { timer = setTimeout(() => reject(new Error(message)), timeoutMs); }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
+type ClientFactory = (options: { apiId: number; apiHash: string; databaseDirectory: string; filesDirectory: string }) => ClientLike;
 
 export class TelegramClient {
   private client?: ClientLike;
   private connecting?: Promise<void>;
+  private readonly users = new Map<number, Promise<TdObject>>();
+  private readonly settings: AccountSettings;
+  private aborter = new AbortController();
+  private closing = false;
+  private readonly factory: ClientFactory;
+  constructor(settings?: AccountSettings, factory: ClientFactory = (options) => createClient(options) as unknown as ClientLike) { this.settings = settings ?? accountSettings(process.env.TG_ACCOUNT ?? "default"); this.factory = factory; }
 
   async connect(authorizer?: unknown): Promise<void> {
+    if (this.closing) throw new TelegramError("CANCELLED", "Telegram runtime is shutting down.");
     // Do not expose the client before TDLib authorization completes. MCP may
     // execute several read-only tools concurrently on the first request.
     if (this.connecting) return this.connecting;
@@ -44,37 +40,61 @@ export class TelegramClient {
       await this.connecting;
     } catch (error) {
       this.client = undefined;
-      throw error;
+      const mapped = telegramError(error);
+      if (mapped.code === "SESSION_LOCKED") throw new TelegramError("SESSION_LOCKED", `Telegram account '${this.settings.account}' is already being used by another codex-telegram process.`);
+      throw mapped;
     } finally {
       this.connecting = undefined;
     }
   }
 
   private async open(authorizer?: unknown): Promise<void> {
-    const config = loadConfig();
+    const config = loadConfig(this.settings);
     await Promise.all([fs.mkdir(config.databaseDirectory, { recursive: true }), fs.mkdir(config.filesDirectory, { recursive: true })]);
     configure({ tdjson: getTdjson(), verbosityLevel: 1 });
-    const raw = createClient({ apiId: config.apiId, apiHash: config.apiHash, databaseDirectory: config.databaseDirectory, filesDirectory: config.filesDirectory }) as unknown as ClientLike;
+    const raw = this.factory({ apiId: config.apiId, apiHash: config.apiHash, databaseDirectory: config.databaseDirectory, filesDirectory: config.filesDirectory });
     raw.on("error", (error) => log.error("TDLib client error", error));
     this.client = raw;
     try {
-      await within(raw.login(authorizer ?? mcpAuthorizer()), LOGIN_TIMEOUT_MS, "Timed out while opening TDLib. Another process may be using this Telegram session database.");
+      await withTimeout(raw.login(authorizer ?? mcpAuthorizer()), 15_000, "Timed out while opening TDLib. Another process may be using this Telegram session database.");
     } catch (error) {
-      await within(raw.close(), 2_000, "Timed out while closing TDLib.").catch(() => undefined);
+      await withTimeout(raw.close(), 2_000, "Timed out while closing TDLib.").catch(() => undefined);
       this.client = undefined;
       throw error;
     }
     log.info("Telegram authenticated");
   }
 
-  async close(): Promise<void> { await this.client?.close(); this.client = undefined; this.connecting = undefined; }
+  async close(): Promise<void> {
+    this.closing = true; this.aborter.abort();
+    const pending = this.connecting; if (pending) await withTimeout(pending.catch(() => undefined), 2_000, "Timed out while stopping TDLib.").catch(() => undefined);
+    await withTimeout(this.client?.close() ?? Promise.resolve(), 2_000, "Timed out while stopping TDLib.").catch(() => undefined);
+    this.client = undefined; this.connecting = undefined; this.users.clear();
+  }
   private async invoke(request: TdObject): Promise<TdObject> {
     await this.connect();
-    try { return obj(await this.client!.invoke(request)); }
-    catch (error) { log.error("Telegram request failed", error); throw new Error(error instanceof Error ? error.message : "Telegram request failed"); }
+    const method = str(request._) ?? "unknown";
+    const policy = requestPolicy(method);
+    try { return obj(await executeWithRetry(() => this.client!.invoke(request), { policy, signal: this.aborter.signal })); }
+    catch (error) {
+      const mapped = telegramError(error, policy.kind === "write" || policy.kind === "transfer");
+      log.error("Telegram request failed", mapped);
+      throw mapped;
+    }
   }
 
   async getMe() { return this.invoke({ _: "getMe" }); }
+  private getUserCached(userId: number): Promise<TdObject> {
+    const existing = this.users.get(userId);
+    if (existing) return existing;
+    const request = this.invoke({ _: "getUser", user_id: userId }).catch((error) => {
+      this.users.delete(userId);
+      throw error;
+    });
+    this.users.set(userId, request);
+    if (this.users.size > 500) this.users.delete(this.users.keys().next().value!);
+    return request;
+  }
   async health(checkConnection: boolean): Promise<Record<string, unknown>> {
     const status = configurationStatus();
     if (!status.configured || !checkConnection) return { ...status, connection: status.configured ? "not_checked" : "not_configured" };
@@ -209,14 +229,12 @@ export class TelegramClient {
   async downloadFile(chatId: number, messageId: number, destination?: string) {
     const message = obj(await this.invoke({ _: "getMessage", chat_id: chatId, message_id: messageId }));
     const metadata = fileFromMessage(message); if (!metadata?.telegram_file_id) throw new Error("The selected message does not contain a downloadable file.");
-    if ((metadata.size ?? 0) > maxDownloadBytes) throw new Error(`The selected file exceeds the configured download limit of ${maxDownloadBytes} bytes.`);
+    if (!metadata.size || metadata.size <= 0) throw new Error("The selected file has no known size and is rejected by the local download safety policy.");
+    if (metadata.size > maxDownloadBytes) throw new Error(`The selected file exceeds the configured download limit of ${maxDownloadBytes} bytes.`);
     const downloaded = await this.invoke({ _: "downloadFile", file_id: metadata.telegram_file_id, priority: 1, offset: 0, limit: 0, synchronous: true });
     const source = str(obj(downloaded.local).path); if (!source) throw new Error("TDLib did not provide a downloaded file path.");
     if (!destination) return { ...metadata, local_path: source };
-    if (path.basename(destination) !== destination) {
-      throw new Error("destination must be a file name only, without directory components.");
-    }
-    const target = path.resolve(downloadsDirectory, destination);
+    const target = path.resolve(downloadsDirectory, safeDownloadFilename(destination));
     if (!isStrictChildPath(downloadsDirectory, target)) throw new Error("destination is outside the configured downloads directory.");
     await fs.mkdir(downloadsDirectory, { recursive: true });
     await fs.copyFile(source, target, fs.constants.COPYFILE_EXCL);
@@ -230,18 +248,18 @@ export class TelegramClient {
     let username: string | undefined;
     if (userId) {
       try {
-        const user = await this.invoke({ _: "getUser", user_id: userId });
+        const user = await this.getUserCached(userId);
         firstName = str(user.first_name);
         lastName = str(user.last_name);
         const usernames = obj(user.usernames);
         username = str(usernames.editable_username) ?? str((Array.isArray(usernames.active_usernames) ? usernames.active_usernames[0] : undefined));
       } catch { /* a chat result remains useful if a profile cannot be resolved */ }
     }
-    return { chat_id: num(chat.id), type: kind, user_id: userId, title: str(chat.title), first_name: firstName, last_name: lastName, username, unread_count: num(chat.unread_count) ?? 0, last_message_preview: chat.last_message ? preview(messageText(obj(chat.last_message))) : undefined, last_message_date: chat.last_message ? formatDate(obj(chat.last_message).date) : undefined };
+    return { untrusted_telegram_data: true, chat_id: num(chat.id), type: kind, user_id: userId, title: untrustedText(str(chat.title), 256), first_name: untrustedText(firstName, 128), last_name: untrustedText(lastName, 128), username: untrustedText(username, 128), unread_count: num(chat.unread_count) ?? 0, last_message_preview: chat.last_message ? preview(messageText(obj(chat.last_message))) : undefined, last_message_date: chat.last_message ? formatDate(obj(chat.last_message).date) : undefined };
   }
   async displayMessage(message: TdObject) {
     const id = senderId(message); let senderName: string | undefined; let username: string | undefined;
-    if (id && obj(message.sender_id).user_id) { try { const user = await this.invoke({ _: "getUser", user_id: id }); senderName = [str(user.first_name), str(user.last_name)].filter(Boolean).join(" ") || undefined; const names = obj(user.usernames); username = str(names.editable_username) ?? str((Array.isArray(names.active_usernames) ? names.active_usernames[0] : undefined)); } catch { /* message remains useful without lookup */ } }
-    const reply = obj(message.reply_to); return { message_id: num(message.id), chat_id: num(message.chat_id), sender_id: id, sender_name: senderName, username, date: formatDate(message.date), text: messageText(message), reply_to_message_id: num(reply.message_id), is_outgoing: message.is_outgoing === true, content_type: contentType(message), inline_buttons: inlineButtons(message), file: fileFromMessage(message) };
+    if (id && obj(message.sender_id).user_id) { try { const user = await this.getUserCached(id); senderName = [str(user.first_name), str(user.last_name)].filter(Boolean).join(" ") || undefined; const names = obj(user.usernames); username = str(names.editable_username) ?? str((Array.isArray(names.active_usernames) ? names.active_usernames[0] : undefined)); } catch { /* message remains useful without lookup */ } }
+    const reply = obj(message.reply_to); return { untrusted_telegram_data: true, message_id: num(message.id), chat_id: num(message.chat_id), sender_id: id, sender_name: untrustedText(senderName, 256), username: untrustedText(username, 128), date: formatDate(message.date), text: messageText(message), reply_to_message_id: num(reply.message_id), is_outgoing: message.is_outgoing === true, content_type: contentType(message), inline_buttons: inlineButtons(message), file: fileFromMessage(message) };
   }
 }

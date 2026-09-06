@@ -11,6 +11,20 @@ All notable changes are documented here.
 - Added an explicit, non-overwriting command to migrate API credentials out of a legacy clone-local `.env`.
 - Expanded English and Russian documentation for the new tools.
 
+## Unreleased
+
+- Added server-side permission profiles, custom tool/peer allow and deny lists,
+  outbound file roots, file-size limits, and destructive approvals.
+- Destructive approval is now an expiring one-time token cryptographically
+  bound to the exact account, chat, message, and tool; static reusable codes
+  are no longer accepted.
+- Defaulted the public server to read-only instead of relying on a client skill
+  to prevent writes.
+- Marked Telegram output as untrusted, normalized control/invisible characters,
+  and hardened download file names and unknown-size downloads.
+- Added typed TDLib error mapping, bounded retry/timeout policies, a deterministic
+  domain fake, `pnpm run doctor`, and opaque bounded pagination for message history.
+
 ## 0.1.0
 
 - Initial public release.

@@ -1,6 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { TelegramClient } from "./telegram/client.js";
+import { AccountManager } from "./accounts/manager.js";
+import { AccountRouter } from "./accounts/router.js";
+import { z } from "zod";
 import { log } from "./utils/logger.js";
 import { registerDownloadFile } from "./tools/downloadFile.js";
 import { registerGetChat } from "./tools/getChat.js";
@@ -21,9 +23,17 @@ import { registerSendFile } from "./tools/sendFile.js";
 import { registerSendMessage } from "./tools/sendMessage.js";
 import { registerManageMessage } from "./tools/manageMessage.js";
 
-const telegram = new TelegramClient();
+const accounts = new AccountManager();
+const router = new AccountRouter(accounts);
 const server = new McpServer({ name: "codex-telegram", version: "0.2.0" });
-const context = { telegram };
+const rawRegisterTool = server.registerTool.bind(server);
+// One centralized MCP boundary: every tool accepts an optional account and runs
+// under an AsyncLocalStorage account scope. Existing single-account calls work.
+const genericOutputSchema = z.object({}).passthrough();
+const paginatedOutputSchema = z.object({ items: z.array(z.object({}).passthrough()), has_more: z.boolean(), next_cursor: z.string().optional(), truncated: z.boolean() });
+const paginatedTools = new Set(["telegram_list_chats", "telegram_get_messages", "telegram_search_messages", "telegram_search_media"]);
+(server as unknown as { registerTool: (...args: any[]) => unknown }).registerTool = (name: string, definition: any, handler: any) => (rawRegisterTool as any)(name, { ...definition, outputSchema: definition.outputSchema ?? (paginatedTools.has(name) ? paginatedOutputSchema : genericOutputSchema), inputSchema: { ...definition.inputSchema, account: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,31}$/i).optional().describe("Telegram account profile; required when multiple accounts are configured.") } }, (args: { account?: string }) => router.run(args.account, () => handler(args)));
+const context = { accounts, telegram: router.telegram, policy: router.policy };
 
 registerGetMe(server, context);
 registerHealth(server, context);
@@ -47,7 +57,7 @@ registerDownloadFile(server, context);
 
 async function shutdown(signal: string) {
   log.info("MCP server stopping", { signal });
-  await telegram.close();
+  await accounts.close();
   process.exit(0);
 }
 process.once("SIGINT", () => void shutdown("SIGINT"));

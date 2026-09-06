@@ -1,0 +1,101 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import { WriteRateLimiter } from "./rateLimit.js";
+import { ApprovalError, consumeApproval } from "./approval.js";
+
+export type ToolRisk = "read" | "low-risk-write" | "write" | "destructive";
+export type PolicyProfile = "read-only" | "inbox" | "messaging" | "files" | "community-manager" | "admin" | "full-access";
+
+const profileRisks: Record<PolicyProfile, readonly ToolRisk[]> = {
+  "read-only": ["read"],
+  inbox: ["read", "low-risk-write"],
+  messaging: ["read", "low-risk-write", "write"],
+  files: ["read", "low-risk-write", "write"],
+  "community-manager": ["read", "low-risk-write", "write"],
+  admin: ["read", "low-risk-write", "write", "destructive"],
+  "full-access": ["read", "low-risk-write", "write", "destructive"],
+};
+
+function csv(name: string, environment: Record<string, string | undefined>): string[] {
+  return (environment[name] ?? "").split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function roots(environment: Record<string, string | undefined>): string[] {
+  const value = environment.TG_FILE_ROOTS ?? "";
+  return value.split(path.delimiter).map((item) => item.trim()).filter(Boolean).map((item) => path.resolve(item));
+}
+
+function profile(environment: Record<string, string | undefined>): PolicyProfile {
+  const value = environment.TG_POLICY_PROFILE ?? "read-only";
+  if (value in profileRisks) return value as PolicyProfile;
+  throw new PolicyError("INVALID_POLICY", `TG_POLICY_PROFILE must be one of: ${Object.keys(profileRisks).join(", ")}.`);
+}
+
+export class PolicyError extends Error {
+  constructor(public readonly code: string, message: string) { super(message); }
+}
+
+export class Policy {
+  readonly profile: PolicyProfile;
+  readonly allowedChatIds: Set<number>;
+  readonly deniedChatIds: Set<number>;
+  readonly allowedTools: Set<string>;
+  readonly deniedTools: Set<string>;
+  readonly fileRoots: string[];
+  readonly maxFileBytes: number;
+  readonly maxWritesPerMinute: number;
+  private readonly writeLimiter: WriteRateLimiter;
+  constructor(private readonly environment: Record<string, string | undefined> = process.env, private readonly account = process.env.TG_ACCOUNT ?? "default") {
+    this.profile = profile(environment); this.allowedChatIds = new Set(csv("TG_ALLOWED_CHAT_IDS", environment).map(Number).filter(Number.isSafeInteger)); this.deniedChatIds = new Set(csv("TG_DENIED_CHAT_IDS", environment).map(Number).filter(Number.isSafeInteger)); this.allowedTools = new Set(csv("TG_ALLOWED_TOOLS", environment)); this.deniedTools = new Set(csv("TG_DENIED_TOOLS", environment)); this.fileRoots = roots(environment); this.maxFileBytes = Number(environment.TG_MAX_SEND_FILE_BYTES ?? 25 * 1024 * 1024); this.maxWritesPerMinute = Number(environment.TG_MAX_WRITES_PER_MINUTE ?? 20); this.writeLimiter = new WriteRateLimiter(this.maxWritesPerMinute, 60_000);
+  }
+
+  describe() {
+    return {
+      profile: this.profile,
+      allowed_chat_ids_configured: this.allowedChatIds.size,
+      denied_chat_ids_configured: this.deniedChatIds.size,
+      file_roots_configured: this.fileRoots.length,
+      max_send_file_bytes: Number.isSafeInteger(this.maxFileBytes) && this.maxFileBytes > 0 ? this.maxFileBytes : undefined,
+      max_writes_per_minute: Number.isSafeInteger(this.maxWritesPerMinute) && this.maxWritesPerMinute > 0 ? this.maxWritesPerMinute : undefined,
+      destructive_approval_configured: Boolean(this.environment.TG_DESTRUCTIVE_APPROVAL_SECRET?.trim()),
+    };
+  }
+
+  authorize(tool: string, risk: ToolRisk, options: { chatId?: number; approvalCode?: string; material?: Record<string, string | number | boolean> } = {}) {
+    if (this.deniedTools.has(tool)) throw new PolicyError("TOOL_DENIED", `${tool} is denied by the local Telegram policy.`);
+    if (this.allowedTools.size > 0 && !this.allowedTools.has(tool)) throw new PolicyError("TOOL_NOT_ALLOWED", `${tool} is not in TG_ALLOWED_TOOLS.`);
+    if (!profileRisks[this.profile].includes(risk)) throw new PolicyError("WRITE_DISABLED", `${tool} requires ${risk} access; the active profile is ${this.profile}.`);
+    if (options.chatId !== undefined) {
+      if (this.deniedChatIds.has(options.chatId)) throw new PolicyError("PEER_DENIED", `Chat ${options.chatId} is denied by the local Telegram policy.`);
+      if (risk !== "read" && this.allowedChatIds.size > 0 && !this.allowedChatIds.has(options.chatId)) throw new PolicyError("PEER_NOT_ALLOWED", `Chat ${options.chatId} is not in TG_ALLOWED_CHAT_IDS.`);
+    }
+    if (risk === "destructive") {
+      try { consumeApproval(this.environment.TG_DESTRUCTIVE_APPROVAL_SECRET?.trim(), { tool, account: this.account, chatId: options.chatId, material: options.material }, options.approvalCode); }
+      catch (error) { if (error instanceof ApprovalError) throw new PolicyError(error.code, error.message); throw error; }
+    }
+    if (risk !== "read") {
+      if (!Number.isSafeInteger(this.maxWritesPerMinute) || this.maxWritesPerMinute <= 0) throw new PolicyError("INVALID_POLICY", "TG_MAX_WRITES_PER_MINUTE must be a positive integer.");
+      this.writeLimiter.consume(`${tool}:${options.chatId ?? "local"}`);
+    }
+  }
+
+  async authorizeFile(filePath: string): Promise<string> {
+    if (!Number.isSafeInteger(this.maxFileBytes) || this.maxFileBytes <= 0) throw new PolicyError("INVALID_POLICY", "TG_MAX_SEND_FILE_BYTES must be a positive integer.");
+    if (this.fileRoots.length === 0) throw new PolicyError("FILE_ROOT_REQUIRED", "Sending files is disabled until TG_FILE_ROOTS contains one or more allowed directories.");
+    const real = await fs.realpath(filePath).catch(() => { throw new PolicyError("FILE_NOT_FOUND", "The selected local file does not exist or cannot be resolved."); });
+    const allowed = await Promise.all(this.fileRoots.map(async (root) => {
+      const realRoot = await fs.realpath(root).catch(() => undefined);
+      return realRoot ? isInside(realRoot, real) : false;
+    }));
+    if (!allowed.some(Boolean)) throw new PolicyError("FILE_OUTSIDE_ALLOWED_ROOT", "The selected file is outside TG_FILE_ROOTS.");
+    const stat = await fs.lstat(real);
+    if (!stat.isFile()) throw new PolicyError("INVALID_FILE", "Only regular files can be sent.");
+    if (stat.size > this.maxFileBytes) throw new PolicyError("FILE_TOO_LARGE", `The selected file exceeds the ${this.maxFileBytes}-byte send limit.`);
+    return real;
+  }
+}
+
+function isInside(root: string, target: string): boolean {
+  const relative = path.relative(root, target);
+  return Boolean(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+}

@@ -21,11 +21,26 @@ export function preview(value: string | undefined, maxLength = 500): string | un
   return `${value.slice(0, maxLength - 1)}…`;
 }
 
+/** Telegram-provided strings are data, never instructions. Keep them printable and bounded. */
+export function untrustedText(value: unknown, maxLength = 4_096): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const cleaned = value.normalize("NFC")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060\u2066-\u2069]/g, "")
+    .trim();
+  return cleaned.length <= maxLength ? cleaned : `${cleaned.slice(0, maxLength - 1)}…`;
+}
+
+export function safeDownloadFilename(value: string): string {
+  if (value.length > 128 || value.includes("\0") || path.basename(value) !== value || value === "." || value === "..") throw new Error("destination must be a simple file name of at most 128 characters.");
+  if (/[<>:"/\\|?*]/.test(value) || /[. ]$/.test(value) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i.test(value)) throw new Error("destination is not a safe cross-platform file name.");
+  return value;
+}
+
 export function messageText(message: TdObject): string | undefined {
   const content = obj(message.content);
   const text = obj(content.text);
   const caption = obj(content.caption);
-  return str(text.text) ?? str(caption.text);
+  return untrustedText(str(text.text) ?? str(caption.text));
 }
 
 export function contentType(message: TdObject): string {
@@ -90,7 +105,7 @@ export function inlineButtons(message: TdObject): InlineButton[] {
     row.forEach((button, columnIndex) => {
       const type = obj(button.type);
       const kind = str(type._) ?? "inlineKeyboardButtonTypeUnknown";
-      buttons.push({ row: rowIndex, column: columnIndex, text: str(button.text), type: kind, can_click: kind === "inlineKeyboardButtonTypeCallback" });
+      buttons.push({ row: rowIndex, column: columnIndex, text: untrustedText(str(button.text), 256), type: kind, can_click: kind === "inlineKeyboardButtonTypeCallback" });
     });
   });
   return buttons;
