@@ -28,7 +28,7 @@ The server deliberately does **not** click URL, login, web-app, game, payment, o
 ## Install from GitHub
 
 ```powershell
-git clone <repository-url>
+git clone https://github.com/aagafon1215-source/codex-telegram.git
 cd codex-telegram
 corepack enable
 pnpm install --frozen-lockfile

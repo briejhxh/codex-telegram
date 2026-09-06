@@ -3,8 +3,11 @@
   "version": "0.1.0",
   "description": "Privacy-first local Telegram user-account access through TDLib and MCP.",
   "author": {
-    "name": "codex-telegram contributors"
+    "name": "aagafon1215-source",
+    "url": "https://github.com/aagafon1215-source"
   },
+  "homepage": "https://github.com/aagafon1215-source/codex-telegram",
+  "repository": "https://github.com/aagafon1215-source/codex-telegram",
   "skills": "./skills/",
   "interface": {
     "displayName": "Telegram",
