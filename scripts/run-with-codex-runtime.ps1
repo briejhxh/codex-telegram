@@ -1,6 +1,6 @@
 param(
   [Parameter(Mandatory = $true, Position = 0)]
-  [ValidateSet("dev", "setup", "login", "build", "start", "typecheck", "test", "check", "plugin:validate", "migrate-legacy-config", "approve")]
+  [ValidateSet("dev", "setup", "login", "build", "start", "typecheck", "test", "check", "plugin:validate", "migrate-legacy-config", "approve", "doctor")]
   [string]$Script,
   [Parameter(ValueFromRemainingArguments = $true)]
   [string[]]$Arguments

@@ -1,5 +1,14 @@
 # Troubleshooting
 
+## Collect a safe local diagnostic
+
+Run `pnpm run doctor` (or `./scripts/run-with-codex-runtime.ps1 doctor` on a
+machine that uses Codex's bundled runtime). It checks Node, private state
+directories, TDLib availability, build output, available space, and configuration
+presence without printing credentials, phone numbers, message contents, or a
+session. It intentionally does not open TDLib, so it cannot create a session-lock
+conflict. Use `telegram_health` to test the already-configured session.
+
 Run `telegram_health` first. It does not reveal credentials or messages and
 reports the selected account, effective state paths, policy, and connection
 state.
