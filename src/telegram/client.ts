@@ -8,6 +8,8 @@ import { mcpAuthorizer } from "./auth.js";
 import { contentType, fileFromMessage, formatDate, inlineButtonRows, inlineButtons, isOutgoingMessage, isStrictChildPath, messageText, num, obj, preview, safeDownloadFilename, senderId, str, untrustedText } from "./helpers.js";
 import type { TdObject } from "./types.js";
 import { mediaSearchFilter, type MediaKind } from "./media.js";
+import { executeWithRetry, requestPolicy, withTimeout } from "./retry.js";
+import { telegramError } from "./errors.js";
 
 type ClientLike = {
   login(authorizer: unknown): Promise<void>;
@@ -15,20 +17,6 @@ type ClientLike = {
   close(): Promise<void>;
   on(event: "error", listener: (error: Error) => void): unknown;
 };
-
-const LOGIN_TIMEOUT_MS = 15_000;
-
-async function within<T>(work: Promise<T>, timeoutMs: number, message: string): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  try {
-    return await Promise.race([
-      work,
-      new Promise<T>((_, reject) => { timer = setTimeout(() => reject(new Error(message)), timeoutMs); }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
 
 export class TelegramClient {
   private client?: ClientLike;
@@ -59,9 +47,9 @@ export class TelegramClient {
     raw.on("error", (error) => log.error("TDLib client error", error));
     this.client = raw;
     try {
-      await within(raw.login(authorizer ?? mcpAuthorizer()), LOGIN_TIMEOUT_MS, "Timed out while opening TDLib. Another process may be using this Telegram session database.");
+      await withTimeout(raw.login(authorizer ?? mcpAuthorizer()), 15_000, "Timed out while opening TDLib. Another process may be using this Telegram session database.");
     } catch (error) {
-      await within(raw.close(), 2_000, "Timed out while closing TDLib.").catch(() => undefined);
+      await withTimeout(raw.close(), 2_000, "Timed out while closing TDLib.").catch(() => undefined);
       this.client = undefined;
       throw error;
     }
@@ -71,8 +59,14 @@ export class TelegramClient {
   async close(): Promise<void> { await this.client?.close(); this.client = undefined; this.connecting = undefined; this.users.clear(); }
   private async invoke(request: TdObject): Promise<TdObject> {
     await this.connect();
-    try { return obj(await this.client!.invoke(request)); }
-    catch (error) { log.error("Telegram request failed", error); throw new Error(error instanceof Error ? error.message : "Telegram request failed"); }
+    const method = str(request._) ?? "unknown";
+    const policy = requestPolicy(method);
+    try { return obj(await executeWithRetry(() => this.client!.invoke(request), { policy })); }
+    catch (error) {
+      const mapped = telegramError(error, policy.kind === "write" || policy.kind === "transfer");
+      log.error("Telegram request failed", mapped);
+      throw mapped;
+    }
   }
 
   async getMe() { return this.invoke({ _: "getMe" }); }

@@ -1,11 +1,13 @@
 import { PolicyError } from "./policy.js";
 import { RateLimitError } from "./rateLimit.js";
+import { TelegramError } from "../telegram/errors.js";
 
 export type PublicError = { code: string; message: string; retry_after_seconds?: number };
 
 export function publicError(error: unknown): PublicError {
   if (error instanceof PolicyError) return { code: error.code, message: error.message };
   if (error instanceof RateLimitError) return { code: "LOCAL_RATE_LIMITED", message: "The local safety policy temporarily paused repeated write operations.", retry_after_seconds: error.retryAfterSeconds };
+  if (error instanceof TelegramError) return { code: error.code, message: error.message, retry_after_seconds: error.retryAfterSeconds };
   const detail = error instanceof Error ? error.message : "Unknown Telegram error";
   const flood = /FLOOD_WAIT_(\d+)|retry after\s+(\d+)/i.exec(detail);
   if (flood) return { code: "RATE_LIMITED", message: "Telegram temporarily rate-limited this operation. Retry later; writes are never retried automatically.", retry_after_seconds: Number(flood[1] ?? flood[2]) };
