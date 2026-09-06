@@ -1,25 +1,9 @@
+import crypto from "node:crypto";
 import { TelegramError } from "./errors.js";
-
-export type MessageCursor = { v: 1; kind: "messages"; chatId: number; beforeMessageId: number };
-
-export function encodeMessageCursor(cursor: MessageCursor): string {
-  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
-}
-
-/** Decode only the cursor shape produced by this version of the server. */
-export function decodeMessageCursor(value: string, chatId: number): MessageCursor {
-  try {
-    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Partial<MessageCursor>;
-    const beforeMessageId = parsed.beforeMessageId;
-    if (parsed.v !== 1 || parsed.kind !== "messages" || parsed.chatId !== chatId || typeof beforeMessageId !== "number" || !Number.isSafeInteger(beforeMessageId) || beforeMessageId <= 0) throw new Error("invalid");
-    return { v: 1, kind: "messages", chatId, beforeMessageId };
-  } catch {
-    throw new TelegramError("INVALID_INPUT", "The pagination cursor is invalid for this chat. Start again without cursor.");
-  }
-}
-
-export function paginated<T>(items: T[], limit: number, makeCursor: (last: T) => string): { items: T[]; next_cursor?: string; has_more: boolean; truncated: boolean } {
-  const hasMore = items.length > limit;
-  const page = items.slice(0, limit);
-  return { items: page, next_cursor: hasMore && page.length > 0 ? makeCursor(page.at(-1)!) : undefined, has_more: hasMore, truncated: hasMore };
-}
+type Cursor = { v: 1; account: string; operation: string; context: string; state: Record<string, number>; nonce: string };
+const secret = process.env.TG_CURSOR_SECRET?.trim() || crypto.randomBytes(32).toString("base64url");
+const canonical = (cursor: Cursor) => JSON.stringify({ v: cursor.v, account: cursor.account, operation: cursor.operation, context: cursor.context, state: cursor.state, nonce: cursor.nonce });
+export const cursorContext = (value: unknown) => crypto.createHash("sha256").update(JSON.stringify(value)).digest("base64url");
+export function encodeCursor(data: Omit<Cursor, "v" | "nonce">): string { const cursor: Cursor = { ...data, v: 1, nonce: crypto.randomBytes(12).toString("base64url") }; return `${Buffer.from(JSON.stringify(cursor)).toString("base64url")}.${crypto.createHmac("sha256", secret).update(canonical(cursor)).digest("base64url")}`; }
+export function decodeCursor(value: string, expected: Omit<Cursor, "v" | "state" | "nonce">): Cursor { try { const [encoded, signature, extra] = value.split("."); if (!encoded || !signature || extra) throw new Error(); const parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as Cursor; const actual = crypto.createHmac("sha256", secret).update(canonical(parsed)).digest("base64url"); if (signature.length !== actual.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(actual)) || parsed.v !== 1 || parsed.account !== expected.account || parsed.operation !== expected.operation || parsed.context !== expected.context || !parsed.state || !Object.values(parsed.state).every(Number.isSafeInteger)) throw new Error(); return parsed; } catch { throw new TelegramError("INVALID_INPUT", "The pagination cursor is invalid, tampered with, or belongs to another account, operation, or query."); } }
+export function page<T>(items: T[], limit: number, offset: number, cursor: (next: number) => string) { const start = Math.max(0, offset); const visible = items.slice(start, start + limit); const hasMore = start + visible.length < items.length; return { items: visible, has_more: hasMore, next_cursor: hasMore ? cursor(start + visible.length) : undefined, truncated: hasMore }; }
