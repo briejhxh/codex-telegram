@@ -11,6 +11,15 @@ test("maps TDLib errors to stable public-safe codes", () => {
   assert.equal(telegramError(new Error("network connection lost")).code, "NETWORK_ERROR");
 });
 
+test("maps native TDLib session conflicts safely and never retries them", async () => {
+  const raw = new Error("Can't lock file C:\\private\\tdlib\\database\\td.binlog because it is already in use");
+  const mapped = telegramError(raw);
+  assert.equal(mapped.code, "SESSION_LOCKED"); assert.equal(mapped.retryable, false); assert.equal(/private|td\.binlog/i.test(mapped.message), false);
+  let calls = 0;
+  await assert.rejects(() => executeWithRetry(async () => { calls += 1; throw raw; }, { policy: operationPolicies.metadata }), (error: unknown) => error instanceof TelegramError && error.code === "SESSION_LOCKED");
+  assert.equal(calls, 1);
+});
+
 test("classifies write and read requests with different retry policies", () => {
   assert.equal(requestPolicy("getChat").kind, "metadata");
   assert.equal(requestPolicy("getChatHistory").kind, "history");
